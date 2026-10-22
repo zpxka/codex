@@ -202,6 +202,19 @@ def settings(service, mode):
             else:
                 done("태그 이름을 변경했습니다.")
     st.divider()
+    st.subheader("자동 백업")
+    st.write("등록·수정·삭제·검증·태그 변경·CSV 복원 후 자동 백업합니다. 앱을 열 때에도 오늘의 백업을 확인합니다.")
+    st.caption("UTC 날짜별 최신 사본 1개를 유지하며 최근 30개를 보관합니다. 앱이 꺼져 있을 때는 실행되지 않습니다. 삭제·복원 직전 백업은 별도로 남습니다.")
+    backups = service.library.automatic_backups()
+    if backups:
+        latest = backups[0]
+        from datetime import datetime, timezone
+        modified = datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+        st.text(f"최근 백업 시각(UTC): {modified}")
+        st.code(str(latest.parent))
+    else:
+        st.warning("자동 백업 사본이 없습니다. 아래 복원용 CSV도 안전한 곳에 보관하세요.")
+    st.info("자동 백업은 이 컴퓨터에 저장됩니다. 노트북 분실·디스크 고장에 대비하려면 복원용 CSV를 별도 저장장치나 팀에서 승인한 저장소에도 보관하세요.")
     st.subheader("CSV 내보내기·백업")
     st.caption("UTF-8 BOM으로 저장합니다. 목록용 CSV는 스프레드시트 수식으로 해석될 수 있는 셀 앞에 작은따옴표를 붙입니다. 원본 데이터는 바뀌지 않습니다.")
     st.download_button("전체 목록 CSV 다운로드", export_list(service.library),
@@ -253,6 +266,9 @@ def main():
         st.success(st.session_state.pop("notice"))
     try:
         service = Research(Library(database_path(mode), mode))
+        service.library.automatic_backup(only_if_needed=True)
+        if service.library.backup_warning:
+            st.warning(service.library.backup_warning)
         if page == "메인 대시보드":
             dashboard(service)
         elif page == "자료 등록":

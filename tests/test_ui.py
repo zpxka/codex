@@ -134,3 +134,23 @@ def test_dashboard_counts_and_mode_switch(tmp_path, monkeypatch, source, event):
     app.sidebar.selectbox[0].set_value('예시·연습 자료').run()
     assert app.metric[0].value == '0'
     assert app.warning
+
+
+def test_settings_shows_automatic_backup(tmp_path, monkeypatch):
+    monkeypatch.setenv('REVIEWLAB_DATA_DIR', str(tmp_path))
+    app = AppTest.from_file(APP).run()
+    navigate(app, '설정 및 데이터 관리')
+    assert any(s.value == '자동 백업' for s in app.subheader)
+    assert any('최근 백업 시각' in s.value for s in app.text)
+    assert any('backups' in s.value and 'automatic' in s.value for s in app.code)
+
+
+def test_backup_failure_warning_is_visible(tmp_path, monkeypatch):
+    monkeypatch.setenv('REVIEWLAB_DATA_DIR', str(tmp_path))
+    def failed_backup(self, **kwargs):
+        self.backup_warning = '자동 백업 실패 테스트'
+        return None
+    monkeypatch.setattr(Library, 'automatic_backup', failed_backup)
+    app = AppTest.from_file(APP).run()
+    assert not app.exception
+    assert any('자동 백업 실패 테스트' in w.value for w in app.warning)

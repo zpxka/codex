@@ -1,6 +1,9 @@
 """SQLite 저장 계층. 각 처리에서 연결을 닫고 UI와 SQL을 분리한다."""
 import sqlite3
+import os
+import re
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,6 +15,7 @@ class Library:
         if mode not in ("actual", "example"):
             raise ValueError("데이터 모드가 올바르지 않습니다.")
         self.path, self.mode = Path(path), mode
+        self.backup_warning = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -37,11 +41,61 @@ class Library:
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
+        committed_changes = False
         try:
             with db:
                 yield db
+            committed_changes = db.total_changes > 0
         finally:
             db.close()
+        if committed_changes:
+            self.automatic_backup()
+
+    def automatic_backup(self, only_if_needed=False):
+        """커밋 후 최신 일별 사본을 원자적으로 교체한다. 백업 오류로 저장을 취소하지 않는다."""
+        temporary = None
+        try:
+            directory = self.path.parent / "backups" / "automatic"
+            directory.mkdir(parents=True, exist_ok=True)
+            day = datetime.now(timezone.utc).date().isoformat()
+            target = directory / f"auto-{day}.sqlite3"
+            if (only_if_needed and target.exists()
+                    and target.stat().st_mtime_ns >= self.path.stat().st_mtime_ns):
+                return target
+            temporary = directory / f".pending-{uuid4()}.sqlite3"
+            source = sqlite3.connect(self.path, timeout=10)
+            try:
+                destination = sqlite3.connect(temporary)
+                try:
+                    source.backup(destination)
+                    if destination.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                        raise sqlite3.DatabaseError("Backup integrity check failed")
+                finally:
+                    destination.close()
+            finally:
+                source.close()
+            os.replace(temporary, target)
+            # 자동 생성된 일별 파일만 정리한다. 삭제·복원 직전 사본과 사용자 파일은 건드리지 않는다.
+            daily = sorted(p for p in directory.iterdir()
+                           if re.fullmatch(r"auto-\d{4}-\d{2}-\d{2}\.sqlite3", p.name) and p.is_file())
+            for old in daily[:-30]:
+                old.unlink()
+            self.backup_warning = None
+            return target
+        except (OSError, sqlite3.Error):
+            self.backup_warning = "자동 백업을 완료하지 못했습니다. 자료 저장과는 별개입니다. 백업 폴더 권한·디스크 공간을 확인하고 복원용 CSV를 별도로 내려받으세요."
+            return None
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def automatic_backups(self):
+        directory = self.path.parent / "backups" / "automatic"
+        return sorted((p for p in directory.glob("auto-*.sqlite3")
+                       if re.fullmatch(r"auto-\d{4}-\d{2}-\d{2}\.sqlite3", p.name)), reverse=True)
 
     def tags(self):
         with self.connect() as db:
