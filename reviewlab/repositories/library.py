@@ -17,9 +17,12 @@ class Library:
         self.path, self.mode = Path(path), mode
         self.backup_warning = None
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        versions = [1]
+        fresh = False
         with self.connect() as db:
             tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not tables:
+                fresh = True
                 script = (Path(__file__).parents[1] / "db/migrations/001_initial.sql").read_text()
                 # executescript는 암시적 COMMIT을 수행하므로 직접 BEGIN을 포함한다.
                 db.executescript("BEGIN IMMEDIATE;\n" + script)
@@ -30,11 +33,39 @@ class Library:
                 if not {"schema_migrations", "project_metadata"}.issubset(tables):
                     raise ValueError("ReviewLab 데이터베이스가 아닙니다. 데이터 경로를 확인하세요.")
                 versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]
-                if versions != [1]:
+                if versions not in ([1], [1, 2]):
                     raise ValueError("지원하지 않는 DB 버전입니다. 원본을 보존하고 앱 버전을 확인하세요.")
                 row = db.execute("SELECT data_kind FROM project_metadata WHERE id=1").fetchone()
                 if not row or row[0] != mode:
                     raise ValueError("DB의 실제/예시 구분이 현재 모드와 다릅니다.")
+                if versions == [1, 2] and not {
+                    "review_projects", "review_imports", "reviews", "review_notes", "review_checks",
+                    "review_source_links", "review_analysis_runs"
+                }.issubset(tables):
+                    raise ValueError("DB 버전과 리뷰 테이블 구조가 일치하지 않습니다.")
+        if versions == [1]:
+            self.migrate_reviews(backup=not fresh)
+
+    def migrate_reviews(self, backup=True):
+        # 기존 DB 사본 생성에 실패하면 마이그레이션을 시작하지 않는다.
+        if backup:
+            self.snapshot()
+        script = (Path(__file__).parents[1] / "db/migrations/002_reviews.sql").read_text()
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]
+            if versions == [1, 2]:
+                return
+            if versions != [1]:
+                raise ValueError("지원하지 않는 DB 버전입니다.")
+            # DDL도 같은 트랜잭션에서 처리한다. executescript의 암시적 COMMIT을 피한다.
+            for statement in script.split(";"):
+                if statement.strip():
+                    db.execute(statement)
+            db.execute("INSERT INTO schema_migrations VALUES(2,?)", (now(),))
+            if db.execute("PRAGMA foreign_key_check").fetchall():
+                raise ValueError("마이그레이션 외래키 검사가 실패했습니다.")
+
 
     @contextmanager
     def connect(self):

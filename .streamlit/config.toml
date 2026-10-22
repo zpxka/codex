@@ -1,6 +1,6 @@
 [server]
 address = "127.0.0.1"
-maxUploadSize = 10
+maxUploadSize = 50
 [browser]
 gatherUsageStats = false
 [theme]
