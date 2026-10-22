@@ -233,7 +233,7 @@ def backup_and_restore(service, mode):
                        file_name=download_filename(mode, "list"), mime="text/csv")
     st.download_button("복원용 CSV 백업 다운로드", export_backup(service.library),
                        file_name=download_filename(mode, "backup"), mime="text/csv")
-    st.info("복원용 CSV는 자료 ID·태그·등록일·전체 검증 이력을 보존합니다. 목록용 CSV와 임의의 CSV는 복원할 수 없습니다. 백업 파일은 내용을 수정하지 않고 안전하게 보관하세요.")
+    st.info("복원용 CSV는 자료 ID·태그·등록일·전체 검증 이력을 보존합니다. 목록용 CSV와 임의의 CSV는 검증 이력을 복원할 수 없습니다. 일반 참고문헌 CSV의 신규 등록은 자료 등록 → CSV 일괄 등록에서 진행하세요. 백업 파일은 내용을 수정하지 않고 안전하게 보관하세요.")
     st.subheader("CSV 복원")
     st.warning("추가 복원만 지원합니다. 같은 ID, 같은 URL 또는 같은 제목·저자·발행일인 자료는 건너뜁니다. 서로 다른 ID의 중복 후보를 보존하려면 아래 옵션을 선택하세요. 같은 ID는 항상 건너뜁니다. 기존 자료는 덮어쓰지 않으므로 수정된 백업도 기존 자료에 반영되지 않습니다. 복원 전 DB 백업이 자동 생성됩니다.")
     uploaded = st.file_uploader("ReviewLab 복원용 CSV (최대 10MB)", type=["csv"], key=f"upload-{mode}")
@@ -293,7 +293,12 @@ def main():
         if page == "메인 대시보드":
             dashboard(service)
         elif page == "자료 등록":
-            source_form(service, mode)
+            method = st.radio("등록 방식", ("직접 등록", "CSV 일괄 등록"), horizontal=True, key="source-registration-method")
+            if method == "CSV 일괄 등록":
+                from reviewlab.ui.source_import import main as source_import_main
+                source_import_main(service.library)
+            else:
+                source_form(service, mode)
         elif page == "자료 목록":
             listing(service, mode)
         elif page == "검증 관리":

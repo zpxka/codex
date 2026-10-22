@@ -4,10 +4,12 @@ import sqlite3
 from reviewlab.models import tag_name, validate_event, validate_source
 
 
+def source_key(record):
+    return (record["title"].casefold(), record["authors"].casefold(), record["publication_date"])
+
+
 def duplicate_of(candidate, existing):
-    return (candidate["original_url"] == existing["original_url"] or
-            (candidate["title"].casefold(), candidate["authors"].casefold(), candidate["publication_date"]) ==
-            (existing["title"].casefold(), existing["authors"].casefold(), existing["publication_date"]))
+    return candidate["original_url"] == existing["original_url"] or source_key(candidate) == source_key(existing)
 
 
 class Research:
