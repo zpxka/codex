@@ -3,6 +3,7 @@ import csv
 import io
 import json
 from uuid import uuid4
+from datetime import datetime, timedelta, timezone
 
 from reviewlab.models import FIELDS, tag_name, timestamp, valid_id, validate_event, validate_source
 from reviewlab.services.research import duplicate_of
@@ -11,6 +12,13 @@ MAX_BYTES = 10 * 1024 * 1024
 MAX_RECORDS = 10000
 BACKUP_HEADER = ["format", "mode", "record_type", "payload"]
 FORMAT = "reviewlab-backup-v1"
+
+
+def download_filename(mode, kind):
+    if mode not in ("actual", "example") or kind not in ("list", "backup"):
+        raise ValueError("CSV 파일 구분이 올바르지 않습니다.")
+    stamp = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d_%H%M%S")
+    return f"reviewlab-{mode}-{kind}-{stamp}-KST.csv"
 
 
 def write_csv(header, rows):
@@ -54,10 +62,9 @@ def export_backup(library):
     return write_csv(BACKUP_HEADER, rows)
 
 
-def parse_backup(content, mode):
+def _read_backup(content, mode):
     if len(content) > MAX_BYTES:
         raise ValueError("복원 파일은 10MB 이하여야 합니다.")
-    # 최대 파일 크기 이하로 셀 크기도 제한한다. JSON으로 큰 메모를 안전하게 보존한다.
     csv.field_size_limit(MAX_BYTES)
     try:
         reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
@@ -71,49 +78,81 @@ def parse_backup(content, mode):
                 raise ValueError("CSV 열 개수가 올바르지 않습니다.")
             if row["format"] != FORMAT or row["mode"] != mode:
                 raise ValueError("백업 버전 또는 실제/예시 모드가 다릅니다. 해당 모드에서 복원하세요.")
-            payload = json.loads(row["payload"])
-            if not isinstance(payload, dict):
-                raise ValueError("백업 데이터 구조가 올바르지 않습니다.")
-            raw.append((row["record_type"], payload))
-    except (UnicodeDecodeError, csv.Error, json.JSONDecodeError, RecursionError):
+            raw.append(row)
+    except (UnicodeDecodeError, csv.Error):
         raise ValueError("UTF-8 형식의 손상되지 않은 ReviewLab 백업 CSV를 선택하세요.") from None
-    if not raw or raw[0][0] != "metadata" or set(raw[0][1]) != {"tags"}:
+    if not raw or raw[0]["record_type"] != "metadata":
         raise ValueError("백업 메타데이터가 없습니다.")
-    names = raw[0][1]["tags"]
+    metadata = _payload(raw[0]["payload"])
+    if set(metadata) != {"tags"}:
+        raise ValueError("백업 메타데이터 필드가 올바르지 않습니다.")
+    names = metadata["tags"]
     if not isinstance(names, list) or len(names) > MAX_RECORDS:
         raise ValueError("태그 목록이 올바르지 않습니다.")
     for name in names:
         tag_name(name)
     if len(set(names)) != len(names):
         raise ValueError("백업 태그 이름이 중복됩니다.")
-    ids, event_ids, sources = set(), set(), []
-    for kind, payload in raw[1:]:
-        expected = {"id", *FIELDS, "created_at", "updated_at", "events", "tags"}
-        if kind != "source" or set(payload) != expected:
-            raise ValueError("알 수 없는 백업 레코드 또는 필드입니다.")
-        validate_source(payload)
-        source_id = valid_id(payload["id"])
-        if source_id in ids:
-            raise ValueError("백업 안에 같은 자료 ID가 반복됩니다.")
-        ids.add(source_id)
-        timestamp(payload["created_at"])
-        timestamp(payload["updated_at"])
-        if not isinstance(payload["tags"], list) or any(not isinstance(t, str) or t not in names for t in payload["tags"]):
-            raise ValueError("자료의 태그 연결이 올바르지 않습니다.")
-        if len(set(payload["tags"])) != len(payload["tags"]):
-            raise ValueError("자료에 같은 태그가 반복됩니다.")
-        if not isinstance(payload["events"], list) or len(payload["events"]) > MAX_RECORDS:
-            raise ValueError("검증 이력 형식이 올바르지 않습니다.")
-        for event in payload["events"]:
-            validate_event(event)
-            if set(event) != {"id", "status", "checked_on", "checked_by", "evidence", "memo", "recorded_at"}:
-                raise ValueError("검증 이력 필드가 올바르지 않습니다.")
-            event_id = valid_id(event["id"])
-            if event_id in event_ids:
-                raise ValueError("검증 이력 ID가 중복됩니다.")
-            event_ids.add(event_id)
-            timestamp(event["recorded_at"])
-        sources.append(payload)
+    return names, raw[1:]
+
+
+def _payload(value):
+    try:
+        result = json.loads(value)
+    except (json.JSONDecodeError, RecursionError):
+        raise ValueError("백업 JSON 데이터가 손상되었습니다.") from None
+    if not isinstance(result, dict):
+        raise ValueError("백업 데이터 구조가 올바르지 않습니다.")
+    return result
+
+
+def _validate_record(row, names, ids, event_ids):
+    payload = _payload(row["payload"])
+    expected = {"id", *FIELDS, "created_at", "updated_at", "events", "tags"}
+    if row["record_type"] != "source" or set(payload) != expected:
+        raise ValueError("알 수 없는 백업 레코드 또는 필드입니다.")
+    validate_source(payload)
+    source_id = valid_id(payload["id"])
+    if source_id in ids:
+        raise ValueError("백업 안에 같은 자료 ID가 반복됩니다.")
+    timestamp(payload["created_at"])
+    timestamp(payload["updated_at"])
+    if not isinstance(payload["tags"], list) or any(not isinstance(t, str) or t not in names for t in payload["tags"]):
+        raise ValueError("자료의 태그 연결이 올바르지 않습니다.")
+    if len(set(payload["tags"])) != len(payload["tags"]):
+        raise ValueError("자료에 같은 태그가 반복됩니다.")
+    if not isinstance(payload["events"], list) or len(payload["events"]) > MAX_RECORDS:
+        raise ValueError("검증 이력 형식이 올바르지 않습니다.")
+    local_event_ids = set()
+    for event in payload["events"]:
+        validate_event(event)
+        if set(event) != {"id", "status", "checked_on", "checked_by", "evidence", "memo", "recorded_at"}:
+            raise ValueError("검증 이력 필드가 올바르지 않습니다.")
+        event_id = valid_id(event["id"])
+        if event_id in event_ids or event_id in local_event_ids:
+            raise ValueError("검증 이력 ID가 중복됩니다.")
+        local_event_ids.add(event_id)
+        timestamp(event["recorded_at"])
+    ids.add(source_id)
+    event_ids.update(local_event_ids)
+    return payload
+
+
+def _inspect_records(content, mode):
+    names, raw = _read_backup(content, mode)
+    ids, event_ids, sources, errors = set(), set(), [], []
+    for index, row in enumerate(raw, 1):
+        try:
+            sources.append(_validate_record(row, names, ids, event_ids))
+        except ValueError as error:
+            errors.append({"record": index, "message": str(error)})
+    return names, sources, errors, len(raw)
+
+
+def parse_backup(content, mode):
+    names, sources, errors, _ = _inspect_records(content, mode)
+    if errors:
+        raise ValueError(f"자료 레코드 오류 {len(errors)}건: {errors[0]['message']} 전체 복원을 취소했습니다.")
     return names, sources
 
 
@@ -126,6 +165,23 @@ def partition(sources, existing, allow_duplicates=False):
         else:
             accepted.append(source)
     return accepted, skipped
+
+
+def inspect_restore(library, content, allow_duplicates=False):
+    """DB를 쓰지 않고 파일/레코드 오류와 추가·중복 건수를 구분한다."""
+    try:
+        _, sources, errors, total = _inspect_records(content, library.mode)
+    except ValueError as error:
+        return {"total": None, "added": None, "skipped": None, "error_count": 1,
+                "errors": [{"record": None, "message": str(error)}], "scope": "file", "can_restore": False}
+    existing = library.list_sources()
+    accepted, skipped = partition(sources, existing, allow_duplicates)
+    existing_events = {e["id"] for source in existing for e in source["events"]}
+    conflicts = [source for source in accepted if any(e["id"] in existing_events for e in source["events"])]
+    for source in conflicts:
+        errors.append({"record": None, "message": "기존 자료와 검증 이력 ID가 충돌하는 추가 후보가 있습니다."})
+    return {"total": total, "added": len(accepted) - len(conflicts), "skipped": len(skipped),
+            "error_count": len(errors), "errors": errors, "scope": "record", "can_restore": not errors}
 
 
 def preview_restore(library, content, allow_duplicates=False):

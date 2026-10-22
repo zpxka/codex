@@ -154,3 +154,63 @@ def test_backup_failure_warning_is_visible(tmp_path, monkeypatch):
     app = AppTest.from_file(APP).run()
     assert not app.exception
     assert any('자동 백업 실패 테스트' in w.value for w in app.warning)
+
+
+def test_new_backup_menu_and_dated_downloads(tmp_path, monkeypatch, source):
+    import re
+    import streamlit as st
+    monkeypatch.setenv('REVIEWLAB_DATA_DIR', str(tmp_path))
+    library = Library(database_path('actual'), 'actual')
+    Research(library).save(source)
+    downloads = {}
+    original = st.download_button
+    def capture(label, data, **kwargs):
+        downloads[label] = (data, kwargs['file_name'])
+        return original(label, data, **kwargs)
+    monkeypatch.setattr(st, 'download_button', capture)
+    app = AppTest.from_file(APP).run()
+    navigate(app, '데이터 백업 및 복원')
+    assert len(downloads) == 2
+    for data, filename in downloads.values():
+        assert data.startswith(b'\xef\xbb\xbf')
+        assert re.search(r'\d{4}-\d{2}-\d{2}_\d{6}-KST\.csv$', filename)
+    comparison = app.table[0].value
+    assert comparison['앱 복원'].tolist() == ['불가', '가능']
+
+
+def test_new_backup_menu_preview_restore_and_display(tmp_path, monkeypatch, source):
+    from io import BytesIO
+    import streamlit as st
+    donor = Library(tmp_path / 'donor.sqlite3', 'actual')
+    Research(donor).save(source)
+    # 디스크에 실제 저장한 파일을 다시 읽어 업로드 객체에 전달한다.
+    csv_path = tmp_path / 'saved-backup.csv'
+    csv_path.write_bytes(export_backup(donor))
+    monkeypatch.setenv('REVIEWLAB_DATA_DIR', str(tmp_path / 'application'))
+    monkeypatch.setattr(st, 'file_uploader', lambda *args, **kwargs: BytesIO(csv_path.read_bytes()))
+    app = AppTest.from_file(APP).run()
+    navigate(app, '데이터 백업 및 복원')
+    assert [m.value for m in app.metric] == ['1', '1', '0', '0']
+    assert Library(database_path('actual'), 'actual').list_sources() == []
+    assert element(app.button, 'CSV 복원 실행').disabled
+    element(app.checkbox, '추가 복원 정책을 확인했으며, 신뢰하는 백업의 기존 검증 이력을 승계합니다').check().run()
+    element(app.button, 'CSV 복원 실행').click().run()
+    assert app.success and not app.exception
+    assert [m.value for m in app.metric] == ['1', '0', '1', '0']
+    navigate(app, '자료 목록')
+    assert app.dataframe[0].value.iloc[0]['제목'] == source['title']
+    assert app.dataframe[0].value.iloc[0]['저자·기관'] == source['authors']
+
+
+def test_new_backup_menu_rejects_invalid_upload(tmp_path, monkeypatch):
+    from io import BytesIO
+    import streamlit as st
+    monkeypatch.setenv('REVIEWLAB_DATA_DIR', str(tmp_path))
+    monkeypatch.setattr(st, 'file_uploader', lambda *args, **kwargs: BytesIO(b'wrong,columns\n1,2'))
+    app = AppTest.from_file(APP).run()
+    navigate(app, '데이터 백업 및 복원')
+    assert not app.exception
+    assert [m.value for m in app.metric] == ['확인 불가', '확인 불가', '확인 불가', '1']
+    assert app.error
+    assert element(app.button, 'CSV 복원 실행').disabled
+    assert Library(database_path('actual'), 'actual').list_sources() == []

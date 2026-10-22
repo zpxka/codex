@@ -10,9 +10,9 @@ from reviewlab.config import MODES, database_path
 from reviewlab.models import FIELDS, STATUSES, TYPES
 from reviewlab.repositories.library import Library
 from reviewlab.services.research import Research
-from reviewlab.services.transfer import export_backup, export_list, preview_restore, restore
+from reviewlab.services.transfer import download_filename, export_backup, export_list, inspect_restore, restore
 
-PAGES = ("메인 대시보드", "자료 등록", "자료 목록", "검증 관리", "설정 및 데이터 관리")
+PAGES = ("메인 대시보드", "자료 등록", "자료 목록", "검증 관리", "데이터 백업 및 복원", "설정 및 데이터 관리")
 SORTS = ("등록일 최신순", "등록일 오래된순", "발행일 최신순", "발행일 오래된순")
 LABELS = {"title": "제목", "authors": "저자·기관", "publication_date": "발행일",
           "source_type": "자료 유형", "original_url": "원문 URL", "notes": "핵심 내용 메모",
@@ -215,12 +215,24 @@ def settings(service, mode):
     else:
         st.warning("자동 백업 사본이 없습니다. 아래 복원용 CSV도 안전한 곳에 보관하세요.")
     st.info("자동 백업은 이 컴퓨터에 저장됩니다. 노트북 분실·디스크 고장에 대비하려면 복원용 CSV를 별도 저장장치나 팀에서 승인한 저장소에도 보관하세요.")
+    backup_and_restore(service, mode)
+    st.subheader("로컬 저장 위치")
+    st.code(str(service.library.path))
+    st.caption("SQLite 백업은 같은 폴더의 backups에 보관됩니다. 삭제한 자료도 과거 백업에 남을 수 있으므로 보존 기간에 맞게 관리하세요. 실행 중 DB 파일을 직접 교체하지 마세요.")
+
+
+def backup_and_restore(service, mode):
     st.subheader("CSV 내보내기·백업")
+    st.table(pd.DataFrame([
+        {"파일 구분": "일반 자료 CSV (전체 목록)", "용도": "Excel 조회·팀 공유", "내용": "자료 정보·태그·최신 검증 상태와 담당자·메모", "앱 복원": "불가"},
+        {"파일 구분": "ReviewLab 전용 백업 CSV", "용도": "자료 복원·보관", "내용": "자료 ID·원문 입력·태그·시각·전체 검증 이력", "앱 복원": "가능"},
+    ]))
     st.caption("UTF-8 BOM으로 저장합니다. 목록용 CSV는 스프레드시트 수식으로 해석될 수 있는 셀 앞에 작은따옴표를 붙입니다. 원본 데이터는 바뀌지 않습니다.")
+    st.caption("다운로드 파일명에는 데이터 모드와 백업 날짜·시각(한국 시간, KST)이 포함됩니다. 현재 모드의 전체 자료를 내보냅니다.")
     st.download_button("전체 목록 CSV 다운로드", export_list(service.library),
-                       file_name=f"reviewlab-{mode}-list.csv", mime="text/csv")
+                       file_name=download_filename(mode, "list"), mime="text/csv")
     st.download_button("복원용 CSV 백업 다운로드", export_backup(service.library),
-                       file_name=f"reviewlab-{mode}-backup.csv", mime="text/csv")
+                       file_name=download_filename(mode, "backup"), mime="text/csv")
     st.info("복원용 CSV는 자료 ID·태그·등록일·전체 검증 이력을 보존합니다. 목록용 CSV와 임의의 CSV는 복원할 수 없습니다. 백업 파일은 내용을 수정하지 않고 안전하게 보관하세요.")
     st.subheader("CSV 복원")
     st.warning("추가 복원만 지원합니다. 같은 ID, 같은 URL 또는 같은 제목·저자·발행일인 자료는 건너뜁니다. 서로 다른 ID의 중복 후보를 보존하려면 아래 옵션을 선택하세요. 같은 ID는 항상 건너뜁니다. 기존 자료는 덮어쓰지 않으므로 수정된 백업도 기존 자료에 반영되지 않습니다. 복원 전 DB 백업이 자동 생성됩니다.")
@@ -229,12 +241,24 @@ def settings(service, mode):
         content = uploaded.getvalue()
         allow_duplicates = st.checkbox("서로 다른 ID의 중복 후보도 복원합니다 (의도적으로 중복 등록한 자료용)",
                                        key=f"allow-restore-{mode}-{hashlib.sha256(content).hexdigest()}")
-        try:
-            result = preview_restore(service.library, content, allow_duplicates)
-        except ValueError as error:
-            st.error(str(error))
+        result = inspect_restore(service.library, content, allow_duplicates)
+        st.subheader("복원 미리보기")
+        counts = st.columns(4)
+        for column, label, value in zip(counts, ("전체 자료", "추가 예정", "중복 건너뛰기", "파일 오류" if result["scope"] == "file" else "오류 자료"),
+                                        (result["total"], result["added"], result["skipped"], result["error_count"])):
+            column.metric(label, "확인 불가" if value is None else value)
+        if not result["can_restore"]:
+            st.error("오류가 있어 복원 전체를 차단했습니다. 정상 레코드도 일부만 복원하지 않습니다. 기존 자료는 변경하지 않았습니다.")
+            for error in result["errors"][:50]:
+                prefix = f'자료 레코드 {error["record"]}: ' if error["record"] is not None else ""
+                st.text(prefix + error["message"])
+            if len(result["errors"]) > 50:
+                st.caption("오류 설명은 처음 50건만 표시합니다. 오류 건수는 전체 기준입니다.")
+            st.button("CSV 복원 실행", disabled=True)
         else:
-            st.write(f'복원 대상 {result["total"]}건 · 추가 예정 {result["added"]}건 · 중복 건너뛰기 {result["skipped"]}건')
+            st.caption("아직 DB에 반영하지 않았습니다. 실행 시 파일과 중복 여부를 다시 검사합니다.")
+            if result["skipped"]:
+                st.warning(f'중복 후보 {result["skipped"]}건을 건너뜁니다. 기존 자료는 덮어쓰지 않습니다.')
             checked = st.checkbox("추가 복원 정책을 확인했으며, 신뢰하는 백업의 기존 검증 이력을 승계합니다",
                                   key=f'restore-{mode}-{allow_duplicates}-{hashlib.sha256(content).hexdigest()}')
             st.caption("검증 완료 상태는 백업에 기록된 과거 판단을 승계합니다. 이번 복원이 원문을 새로 검증하지는 않습니다. 실제/예시 간 복원은 차단합니다.")
@@ -245,9 +269,6 @@ def settings(service, mode):
                     st.error(str(error))
                 else:
                     done(f'복원 완료: {result["added"]}건 추가, {result["skipped"]}건 건너뜀. 기존 자료는 유지했습니다.')
-    st.subheader("로컬 저장 위치")
-    st.code(str(service.library.path))
-    st.caption("SQLite 백업은 같은 폴더의 backups에 보관됩니다. 삭제한 자료도 과거 백업에 남을 수 있으므로 보존 기간에 맞게 관리하세요. 실행 중 DB 파일을 직접 교체하지 마세요.")
 
 
 def main():
@@ -277,6 +298,8 @@ def main():
             listing(service, mode)
         elif page == "검증 관리":
             verification(service, mode)
+        elif page == "데이터 백업 및 복원":
+            backup_and_restore(service, mode)
         else:
             settings(service, mode)
     except ValueError as error:
