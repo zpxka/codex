@@ -58,8 +58,9 @@ def main(library):
     if report['skipped']:
         st.caption('기존 자료 및 CSV 내부에서 같은 URL 또는 같은 제목·저자·발행일을 찾았습니다. 먼저 나온 정상 자료를 유지하고 중복은 건너뜁니다.')
     digest = hashlib.sha256(content).hexdigest()
+    form_token = getattr(library, "form_token", "local")
     confirmed = st.checkbox(f'{mode_label}에 등록하고 새 자료는 미검증으로 저장함을 확인했습니다',
-                            key=f'source-import-confirm-{library.mode}-{encoding}-{digest}')
+                            key=f'source-import-confirm-{library.mode}-{encoding}-{digest}-{form_token}')
     if st.button('CSV 일괄 등록 실행', disabled=not confirmed or not report['can_import'] or report['added'] == 0, type='primary'):
         try:
             result = import_csv(library, content, encoding, confirmed_mode=library.mode if confirmed else None)

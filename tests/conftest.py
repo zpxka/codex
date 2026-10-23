@@ -3,6 +3,14 @@ from reviewlab.repositories.library import Library
 from reviewlab.services.research import Research
 
 
+@pytest.fixture(autouse=True)
+def local_storage_by_default(monkeypatch):
+    # 사용자의 실제 Supabase 설정이 있어도 기존 UI 테스트가 접속하지 않게 한다.
+    monkeypatch.setenv('REVIEWLAB_STORAGE', 'local')
+    from reviewlab.ui import cloud
+    monkeypatch.setattr(cloud, 'config', lambda: dict(url='', key='', storage='local'))
+
+
 @pytest.fixture
 def library(tmp_path):
     return Library(tmp_path / 'actual' / 'reviewlab.sqlite3', 'actual')

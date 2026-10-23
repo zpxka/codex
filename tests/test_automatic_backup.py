@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 
@@ -60,25 +60,27 @@ def test_failed_backup_preserves_database_and_previous_copy(service, library, so
 
 
 def test_daily_rollover_retains_30_auto_files_only(library, monkeypatch):
+    tomorrow = datetime.now(timezone.utc) + timedelta(days=1)
+    old_dates = [(tomorrow - timedelta(days=90-i)).date().isoformat() for i in range(31)]
     class Clock(datetime):
         @classmethod
         def now(cls, tz=None):
-            return datetime(2026, 10, 22, tzinfo=timezone.utc)
+            return tomorrow
     monkeypatch.setattr(storage, 'datetime', Clock)
     directory = library.path.parent / 'backups' / 'automatic'
     # 이번 날짜보다 앞선 사본 31개와 보존해야 하는 사용자 파일.
-    for day in range(1, 32):
-        (directory / f'auto-2026-08-{day:02d}.sqlite3').write_bytes(b'old-test-copy')
+    for day in old_dates:
+        (directory / f'auto-{day}.sqlite3').write_bytes(b'old-test-copy')
     user_file = directory / 'keep-notes.txt'
     user_file.write_text('보존')
     manual = library.snapshot()
     library.automatic_backup()
     files = library.automatic_backups()
     assert len(files) == 30
-    assert files[0].name == 'auto-2026-10-22.sqlite3'
+    assert files[0].name == f'auto-{tomorrow.date().isoformat()}.sqlite3'
     assert user_file.read_text() == '보존'
     assert manual.exists()
-    assert not (directory / 'auto-2026-08-01.sqlite3').exists()
+    assert not (directory / f'auto-{old_dates[0]}.sqlite3').exists()
 
 
 def test_daily_startup_reuses_valid_copy_and_creates_missing_one(library):

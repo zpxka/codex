@@ -143,7 +143,7 @@ class Library:
 
     def list_sources(self):
         with self.connect() as db:
-            rows = [dict(r) for r in db.execute("SELECT * FROM sources")]
+            rows = [dict(r) for r in db.execute("SELECT * FROM sources ORDER BY created_at,id")]
             tags = {}
             for row in db.execute("SELECT source_id,t.id,t.name FROM source_tags st JOIN tags t ON t.id=st.tag_id ORDER BY t.name"):
                 tags.setdefault(row[0], []).append({"id": row[1], "name": row[2]})

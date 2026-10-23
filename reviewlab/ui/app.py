@@ -12,7 +12,7 @@ from reviewlab.repositories.library import Library
 from reviewlab.services.research import Research
 from reviewlab.services.transfer import download_filename, export_backup, export_list, inspect_restore, restore
 
-PAGES = ("메인 대시보드", "자료 등록", "자료 목록", "검증 관리", "데이터 백업 및 복원", "설정 및 데이터 관리", "리뷰 분석")
+PAGES = ("메인 대시보드", "자료 등록", "자료 목록", "검증 관리", "데이터 백업 및 복원", "설정 및 데이터 관리", "리뷰 분석", "공용 DB 관리")
 SORTS = ("등록일 최신순", "등록일 오래된순", "발행일 최신순", "발행일 오래된순")
 LABELS = {"title": "제목", "authors": "저자·기관", "publication_date": "발행일",
           "source_type": "자료 유형", "original_url": "원문 URL", "notes": "핵심 내용 메모",
@@ -43,6 +43,7 @@ def source_form(service, mode, source=None):
     source = source or {}
     sid = source.get("id")
     prefix = f'{mode}-{sid or "new"}-{st.session_state.get("source_epoch", 0) if not sid else 0}'
+    prefix += "-" + getattr(service.library, "form_token", "local")
     tags = service.library.tags()
     tag_map = {t["id"]: t["name"] for t in tags}
     st.caption("* 필수 항목 · 저자와 발행일은 모르면 비워 두세요. 입력한 내용은 그대로 저장합니다.")
@@ -127,7 +128,7 @@ def listing(service, mode):
         source_form(service, mode, source)
     with delete:
         st.warning("자료와 연결된 검증 이력이 삭제됩니다. 삭제 전 DB 백업을 자동으로 보관합니다.")
-        confirm = st.checkbox("선택한 자료와 검증 이력을 삭제하겠습니다", key=f'delete-{mode}-{source["id"]}')
+        confirm = st.checkbox("선택한 자료와 검증 이력을 삭제하겠습니다", key=f'delete-{mode}-{source["id"]}-{getattr(service.library, "form_token", "local")}')
         if st.button("자료 삭제", disabled=not confirm):
             service.delete(source["id"], confirmed=confirm)
             done("자료를 삭제했습니다. 삭제 전 DB 백업은 데이터 폴더의 backups에 보관했습니다.")
@@ -153,7 +154,7 @@ def verification(service, mode):
     st.write(f'현재 상태: {source["status"]}')
     st.link_button("등록된 원문 열기", source["original_url"])
     st.info("검증 완료는 담당자가 원문과 등록 내용을 직접 대조했다는 기록입니다. 자료의 학술적 타당성이나 주장의 진실성을 보증하지 않습니다.")
-    with st.form(f'verify-{mode}-{source["id"]}-{st.session_state.get("verify_epoch", 0)}'):
+    with st.form(f'verify-{mode}-{source["id"]}-{st.session_state.get("verify_epoch", 0)}-{getattr(service.library, "form_token", "local")}'):
         status = st.selectbox("새 검증 상태", STATUSES, index=STATUSES.index(source["status"]))
         day = st.date_input("검증 날짜", value=date.today(), max_value=date.today())
         person = st.text_input("검증 담당자 (별칭 권장)")
@@ -176,7 +177,8 @@ def verification(service, mode):
 
 def settings(service, mode):
     st.subheader("태그 관리")
-    with st.form(f"add-tag-{mode}", clear_on_submit=True):
+    form_token = getattr(service.library, "form_token", "local")
+    with st.form(f"add-tag-{mode}-{form_token}", clear_on_submit=True):
         name = st.text_input("새 태그 이름")
         add = st.form_submit_button("태그 추가")
     if add:
@@ -190,7 +192,8 @@ def settings(service, mode):
     if tags:
         names = {t["id"]: t["name"] for t in tags}
         tid = st.selectbox("수정할 태그", list(names), format_func=names.get, key=f"tag-select-{mode}")
-        with st.form(f"rename-{mode}-{tid}"):
+        form_token = getattr(service.library, "form_token", "local")
+        with st.form(f"rename-{mode}-{tid}-{form_token}"):
             replacement = st.text_input("변경할 태그 이름", names[tid])
             rename = st.form_submit_button("태그 이름 변경")
         st.caption("태그 이름을 바꾸면 연결된 모든 자료에 반영됩니다.")
@@ -216,12 +219,13 @@ def settings(service, mode):
         st.warning("자동 백업 사본이 없습니다. 아래 복원용 CSV도 안전한 곳에 보관하세요.")
     st.info("자동 백업은 이 컴퓨터에 저장됩니다. 노트북 분실·디스크 고장에 대비하려면 복원용 CSV를 별도 저장장치나 팀에서 승인한 저장소에도 보관하세요.")
     backup_and_restore(service, mode)
-    st.subheader("로컬 저장 위치")
-    st.code(str(service.library.path))
+    st.subheader("로컬 저장 위치" if not getattr(service.library, "is_cloud", False) else "이 기기의 공용 자료 백업 위치")
+    st.code(str(service.library.root if getattr(service.library, "is_cloud", False) else service.library.path))
     st.caption("SQLite 백업은 같은 폴더의 backups에 보관됩니다. 삭제한 자료도 과거 백업에 남을 수 있으므로 보존 기간에 맞게 관리하세요. 실행 중 DB 파일을 직접 교체하지 마세요.")
 
 
 def backup_and_restore(service, mode):
+    form_token = getattr(service.library, "form_token", "local")
     st.subheader("CSV 내보내기·백업")
     st.table(pd.DataFrame([
         {"파일 구분": "일반 자료 CSV (전체 목록)", "용도": "Excel 조회·팀 공유", "내용": "자료 정보·태그·최신 검증 상태와 담당자·메모", "앱 복원": "불가"},
@@ -240,7 +244,7 @@ def backup_and_restore(service, mode):
     if uploaded:
         content = uploaded.getvalue()
         allow_duplicates = st.checkbox("서로 다른 ID의 중복 후보도 복원합니다 (의도적으로 중복 등록한 자료용)",
-                                       key=f"allow-restore-{mode}-{hashlib.sha256(content).hexdigest()}")
+                                       key=f"allow-restore-{mode}-{hashlib.sha256(content).hexdigest()}-{form_token}")
         result = inspect_restore(service.library, content, allow_duplicates)
         st.subheader("복원 미리보기")
         counts = st.columns(4)
@@ -260,7 +264,7 @@ def backup_and_restore(service, mode):
             if result["skipped"]:
                 st.warning(f'중복 후보 {result["skipped"]}건을 건너뜁니다. 기존 자료는 덮어쓰지 않습니다.')
             checked = st.checkbox("추가 복원 정책을 확인했으며, 신뢰하는 백업의 기존 검증 이력을 승계합니다",
-                                  key=f'restore-{mode}-{allow_duplicates}-{hashlib.sha256(content).hexdigest()}')
+                                  key=f'restore-{mode}-{allow_duplicates}-{hashlib.sha256(content).hexdigest()}-{form_token}')
             st.caption("검증 완료 상태는 백업에 기록된 과거 판단을 승계합니다. 이번 복원이 원문을 새로 검증하지는 않습니다. 실제/예시 간 복원은 차단합니다.")
             if st.button("CSV 복원 실행", disabled=not checked, type="primary"):
                 try:
@@ -277,7 +281,14 @@ def main():
     label = st.sidebar.selectbox("데이터 모드", list(MODES), key="data_mode")
     mode = MODES[label]
     page = st.sidebar.radio("메뉴", PAGES, key="page")
-    st.sidebar.caption("1·2단계 · 연구자료와 리뷰 분석\n\n한 연구 프로젝트를 로컬에서 관리합니다.")
+    from reviewlab.ui.cloud import config as cloud_config
+    try:
+        configured = cloud_config()
+    except ValueError as error:
+        st.error(str(error))
+        st.stop()
+    storage = st.sidebar.selectbox("저장소", ("로컬 SQLite", "Supabase 공용 저장소"), index=1 if configured['storage']=="supabase" else 0, key="storage-backend")
+    st.sidebar.caption("1·2단계 · 연구자료와 리뷰 분석\n\n로컬·공용 저장소와 실제·예시 모드를 구분합니다.")
     st.title(page)
     if mode == "example":
         st.warning("예시·연습 모드입니다. 여기에 넣은 자료는 실제 연구에 사용하지 마세요. 실제 자료와 별도 저장됩니다.")
@@ -286,7 +297,12 @@ def main():
     if "notice" in st.session_state:
         st.success(st.session_state.pop("notice"))
     try:
-        service = Research(Library(database_path(mode), mode))
+        if storage == "Supabase 공용 저장소":
+            from reviewlab.ui.cloud import library as cloud_library
+            active_library = cloud_library(mode, page)
+        else:
+            active_library = Library(database_path(mode), mode)
+        service = Research(active_library)
         service.library.automatic_backup(only_if_needed=True)
         if service.library.backup_warning:
             st.warning(service.library.backup_warning)
@@ -308,6 +324,9 @@ def main():
         elif page == "리뷰 분석":
             from reviewlab.ui.reviews import main as reviews_main
             reviews_main(service.library)
+        elif page == "공용 DB 관리":
+            from reviewlab.ui.cloud import management
+            management(service.library, mode)
         else:
             settings(service, mode)
     except ValueError as error:

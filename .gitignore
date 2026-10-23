@@ -11,3 +11,7 @@ data/
 backups/
 exports/
 *.egg-info/
+.env.*
+!.env.example
+.streamlit/secrets.*.toml
+!supabase/migrations/*.sql

@@ -62,10 +62,11 @@ def show_context(ctx,summary):
 
 
 def references(service,pid):
+    form_token=getattr(service.library,"form_token","local")
     with st.expander('프로젝트에 참고문헌 연결'):
         sources=service.library.list_sources()
         choices={r['id']:r for r in sources}
-        selected=st.multiselect('기존 연구자료 선택',list(choices),format_func=lambda sid:choices[sid]['title'])
+        selected=st.multiselect('기존 연구자료 선택',list(choices),format_func=lambda sid:choices[sid]['title'],key='source-links-'+pid+'-'+form_token)
         if st.button('선택 자료 연결',disabled=not selected):
             service.repo.link_sources(pid,selected)
             done('참고자료를 연결했습니다.')
@@ -102,7 +103,7 @@ def upload(service,pid):
         st.error(error)
     if report['records']:
         st.dataframe(pd.DataFrame([{LABELS[k]:r.get(k) for k in ('platform','rating','content')} for r in report['records'][:20]]),hide_index=True)
-    with st.form(f'import-{pid}'):
+    with st.form(f'import-{pid}-{getattr(service.library,"form_token","local")}'):
         source_note=st.text_area('수집 경위·이용 권한 기록 (필수)')
         confirmed=st.checkbox('합법적으로 확보했고, 내용·메모의 개인정보를 제거했으며 프로젝트 별점 척도와 데이터 모드를 확인했습니다')
         st.caption('작성자·계정·연락처 열은 기본 저장 대상이 아닙니다. 지원 필드로 직접 연결하거나 내용에 포함된 개인정보는 자동 삭제되지 않습니다. 원본 파일은 별도로 안전하게 보관하세요.')
@@ -126,7 +127,7 @@ def listing(service,rows,checking=False):
     st.write('연구자 검토 이력 (자동 분석 결과와 별도)')
     st.dataframe(pd.DataFrame(r['checks']),hide_index=True)
     if checking:
-        with st.form(f'check-{rid}'):
+        with st.form(f'check-{rid}-{getattr(service.library,"form_token","local")}'):
             status=st.selectbox('검토 상태',STATES)
             reviewer=st.text_input('검토자')
             checked=st.date_input('검토일',value=date.today(),max_value=date.today())
@@ -136,7 +137,7 @@ def listing(service,rows,checking=False):
                 service.check(rid,status,reviewer,checked.isoformat(),evidence,memo)
                 done('검토 이력을 추가했습니다. 원본 리뷰는 유지했습니다.')
     else:
-        with st.form(f'note-{rid}'):
+        with st.form(f'note-{rid}-{getattr(service.library,"form_token","local")}'):
             memo=st.text_area('추가 연구자 메모')
             if st.form_submit_button('메모 추가'):
                 service.note(rid,memo)
@@ -157,7 +158,7 @@ def restore_ui(service):
         st.write(f"프로젝트: {report['project']} · 추가 {report['added']}건 · 중복 {report['skipped']}건 · 오류 0건")
         if report['duplicate_project']:
             st.warning('이미 있는 프로젝트입니다. 내용이 달라도 기존 프로젝트를 그대로 유지합니다.')
-        confirmed=st.checkbox('추가 전용 복원 정책을 확인하고 백업의 과거 검토 이력을 승계합니다',key='review-confirm-'+hashlib.sha256(content).hexdigest())
+        confirmed=st.checkbox('추가 전용 복원 정책을 확인하고 백업의 과거 검토 이력을 승계합니다',key='review-confirm-'+hashlib.sha256(content).hexdigest()+'-'+getattr(service.library,"form_token","local"))
         if st.button('리뷰 백업 복원 실행',disabled=not confirmed):
             result=transfer.restore(service.library,content,confirmed)
             done(f"복원 완료: {result['added']}건 추가 · {result['skipped']}건 건너뜀")
@@ -169,7 +170,7 @@ def main(library):
     st.caption('원문 수집·가짜 리뷰 판정·AI 생성 판정·논문 본문 생성 기능은 없습니다. 리뷰 삭제는 단일 시점 자료로 판단하지 않습니다.')
     if page=='리뷰 데이터 업로드':
         with st.expander('새 분석 프로젝트 만들기',expanded=not service.repo.projects()):
-            with st.form('new-review-project'):
+            with st.form('new-review-project-'+getattr(library,"form_token","local")):
                 name=st.text_input('프로젝트 이름')
                 minimum=st.number_input('별점 최솟값',value=0.0)
                 maximum=st.number_input('별점 최댓값',value=5.0)

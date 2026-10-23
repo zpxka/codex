@@ -8,13 +8,13 @@
 | --- | --- | --- |
 | 언어 | Python 3.11 이상 (3.12 권장) | Linux/Python 3.12.14에서 검증했다. |
 | UI | Streamlit 1.50.0 | 한국어 입력 폼·표·그래프 중심의 로컬 웹 앱에 적합하다. 재실행 동작을 고려해 저장은 명시적 제출로만 수행한다. |
-| 영속 저장 | SQLite, Python `sqlite3` | 별도 서버 없이 메타데이터를 저장한다. SQL과 트랜잭션은 저장소 계층에 모은다. |
+| 영속 저장 | 로컬 SQLite / Supabase PostgreSQL | 기존 SQL 서비스는 세션 작업 사본에서 재사용하고 공용 DB는 정규 테이블·RLS·버전 검사 RPC로 저장한다. |
 | 분석 | pandas 2.3.3 | 1단계 대시보드 표·그래프 구성에 사용한다. CSV 백업은 표준 라이브러리로 처리한다. |
 | 시각화 | Plotly 6.3.1, Matplotlib 3.10.7, koreanize-matplotlib 0.1.1 | Plotly 상호작용 그래프, 동일 집계표 기반 PNG. NanumGothic 폰트를 직접 등록하여 Python 3.12 호환 및 별도 Chrome 설치 불필요. |
 | 테스트 | pytest, Streamlit AppTest | 입력 규칙·저장·통계 테스트와 실제 화면 흐름을 검증한다. |
 | 의존성 관리 | `pyproject.toml`, `requirements.txt`, `requirements.lock` | 직접 의존성과 Linux/Python 3.12 전체 설치 버전을 고정한다. |
 
-외부 AI 서비스, 크롤러, 인증 서버, 메시지 큐는 초기 구성에 포함하지 않는다. 서버 배포·다중 사용자 편집은 별도 설계가 필요한 확장이다.
+외부 AI 서비스·크롤러·메시지 큐는 포함하지 않는다. 공용 저장 모드는 Supabase Auth와 작업공간 권한을 사용하며, 앱 자체의 공개 웹 배포는 별도 범위다. 실제 Supabase 프로젝트 접속은 아직 미검증이다.
 
 ## 계층과 데이터 흐름
 
@@ -162,3 +162,44 @@ UI는 `ui/reviews.py`, 입력 규칙과 가져오기는 `services/reviews.py`, �
 저장소 `repositories/source_import.py`는 `Library.connect()` 안에서 `BEGIN IMMEDIATE` 후 최신 sources와 tags를 읽는다. 서비스가 기존 자료와 파일 내부 중복을 다시 검사하고 신규 자료만 `Library.insert_source`로 추가한다. 태그는 이름으로 재사용/추가하고 연결을 같은 트랜잭션에 기록한다. 오류가 하나라도 있으면 쓰지 않고, 쓰기 중 실패하면 자료·태그·연결이 모두 롤백된다. 커밋 후 기존 자동 백업을 한 번 갱신한다. DB 스키마와 전용 백업 형식은 바꾸지 않는다.
 
 일반 CSV의 자료 ID·등록 시각·검증 상태·담당자·기타 지원하지 않는 열은 무시한 열로 안내하며 가져오지 않는다. 검증 이벤트를 생성하지 않아 신규 자료는 모두 미검증이다. 원본 CSV 파일 자체는 저장하지 않으며 지원 필드 문자열은 기존 입력 검증 규칙에 따라 보존한다. 태그만 `|` 구분·앞뒤 공백 제거·중복 제거를 명시적으로 적용한다. 수식은 실행하지 않고 기존 `safe_cell`을 이용한 목록 내보내기 보호를 유지한다.
+
+## Supabase 공용 저장소: 결정과 경계
+
+기존 서비스와 CSV 복원이 `Library.connect()`의 SQLite SQL·PRAGMA·트랜잭션을 직접 사용한다. 모든 기능을 한 번에 PostgreSQL SQL로 다시 쓰는 회귀 위험을 줄이기 위해 `CloudLibrary`가 사용자 세션별 SQLite 작업 사본을 제공한다. 화면·분석 서비스는 재사용하고 서버의 실제 저장은 Supabase PostgreSQL의 기존 데이터별 정규 테이블 11개에 한다. SQLite 로컬 모드는 계속 독립적으로 동작한다.
+
+```text
+Streamlit 사용자 세션 ─ Supabase Auth (HTTPS)
+         │ 사용자 JWT + publishable/anon key
+         ├─ CloudLibrary ─ 회원 전용 RPC ─ PostgreSQL 정규 테이블
+         │      │                         workspace_id + data_mode + 원래 키
+         │      └─ 세션 SQLite 작업 사본   RLS + 복합 FK + 모드별 revision
+         └─ 기존 Library (로컬 모드)       원본/메모/이력/분석 테이블 분리
+```
+
+- `cloud/client.py`: HTTPS만 허용, Auth 비밀번호 로그인·사용자 확인·토큰 갱신·현재 세션 로그아웃, RPC·오류 정제. 비밀 원시 응답·연결 문자열을 로그나 UI에 내보내지 않는다.
+- `cloud/dataset.py`: 두 단계 전체 데이터의 고정 테이블/필드 목록, 자료형·UUID·시각·FK와 기존 출처/리뷰 검증 규칙, PostgreSQL/SQLite 실수 표현 정규화. 원문 JSON 문자열은 그대로 보존한다.
+- `cloud/library.py`: 회원별 작업 사본, 로컬 API 재사용, SQL 커밋 후 서버 CAS, 미확인 요청 사본, 멱등 재시도, 서버 확인 데이터만 정상 일별 백업. 원래 `~/.reviewlab/{actual,example}`는 수정하지 않는다.
+- `cloud/migration.py`: SQLite 읽기 전용 사본, 중복/충돌/태그 매핑 미리보기와 추가 전용 이전. 같은 ID에 다른 이력이 있거나 이력 순서가 달라도 차단한다.
+- `ui/cloud.py`: 저장소·작업공간·로그인·10초 변경 확인·백업/이전/복구 안내. Auth 클라이언트와 작업 사본을 전역 공유 캐시에 넣지 않는다.
+
+### PostgreSQL 데이터와 권한
+
+`reviewlab.workspaces`, `workspace_members`, `workspace_states`, `commit_receipts`, `schema_migrations`를 공용 메타데이터로 추가한다. 기존 11개 테이블의 PK·UNIQUE·FK에는 `workspace_id,data_mode`를 포함한다. 리뷰 프로젝트의 `data_kind=data_mode`도 검사한다. 체크/검증 내부 sequence는 모드별 키이며 UUID 이력 ID와 원문·시각을 별도로 유지한다. 검증과 연구자 검토는 다른 테이블이다. 전송은 JSON이지만 DB 전체를 단일 JSON 컬럼으로 저장하지 않는다.
+
+`public.reviewlab_*` RPC만 공개 API로 사용한다. 모든 데이터 테이블에 RLS를 켜고 authenticated 구성원 SELECT만 허용한다. 직접 쓰기·TRUNCATE는 허용하지 않는다. SECURITY DEFINER RPC는 고정 search_path와 `auth.uid()` 구성원 검사 후 테이블 소유자 권한으로 쓴다. 테이블 소유자의 FORCE RLS는 사용하지 않고, 앱이 소유자 DB 연결이나 service_role로 접속하지 않게 한다. 익명/PUBLIC에는 RPC 실행 권한을 주지 않는다. 배포 관리자는 SQL 파일을 1회 적용하고 이후 별도 버전 파일로 스키마를 확장한다.
+
+### 동시성·장애와 새로고침
+
+공용 모드 하나의 읽기는 상태 행의 공유 잠금 아래 11개 테이블을 일관되게 내려받는다. 쓰기는 상태 행 `FOR UPDATE` → expected revision 비교 → 필드·크기 검사 → UPSERT/필요한 삭제·지연 FK 검사 → revision 증가·요청 결과 기록을 하나의 트랜잭션으로 수행한다. 실제 삭제는 최신 버전의 사용자 삭제 등으로 작업 사본에서 제거한 행에 한정된다. SQLite 이전은 대상 전체를 포함한 추가 결과를 만들므로 기존 공용 행을 삭제하지 않는다.
+
+동일 자료뿐 아니라 같은 모드의 독립 편집도 충돌할 수 있다. 이는 보수적인 첫 버전의 선택이다. 편집 화면은 세션의 읽은 버전을 유지하고 서버 변경을 자동으로 재기준화하지 않는다. 명시적 새로고침 시 폼 토큰을 바꾸며, 사용자·프로젝트·작업공간·모드도 토큰에 포함한다. 참고문헌/리뷰 등록·수정·검토·태그·삭제·복원 확인이 다른 작업공간으로 넘어가지 않게 한다. 읽기 전용 대시보드는 10초 확인 후 갱신한다.
+
+서버 전송 전에 권한이 제한된 로컬 SQLite 후보 사본과 workspace/mode/expected revision/operation ID/지문 메타데이터를 남긴다. 통신 오류면 성공으로 보고하지 않고 미확인 후보를 유지하며 정상 자동 사본을 갱신하지 않는다. 동일 요청 재시도는 서버 receipt의 payload hash를 비교하고 과거 결과만 돌려주므로 응답 유실 뒤 다른 변경을 되돌리지 않는다. 충돌 요청은 자동 병합하지 않는다. 확인된 커밋의 로컬 백업만 실패한 경우 서버 저장 성공은 유지하고 별도 경고한다.
+
+### 이전과 향후 단계
+
+같은 ID의 원문·연결·순서 있는 이력은 모두 같아야 건너뛸 수 있다. 다른 ID의 의미상 중복은 사용자 확인 후 별도로 보존한다. 같은 이름 태그는 별도 확인 후 ID 연결을 재사용한다. 원본 파일은 쓰지 않으며 과거 검증/검토를 새 검증으로 확정하지 않는다. UUID 비표준 문자열이나 잘못된 원본/정규화 데이터는 임의로 변환하지 않고 차단한다.
+
+현재 클라이언트 한도는 모드별 전체 20MB·50,000개 레코드다. 네트워크 비용·광범위 충돌 때문에 대규모 후속 단계에는 엔터티별 CAS/변경분 RPC가 필요하다. DB는 정규 테이블이므로 survey/document/AI/submission 테이블별 RPC로 확장할 수 있지만 각 단계에서 RLS·복합 FK·로컬 백업·전체 manifest·스키마 버전·기존 테스트를 함께 갱신해야 한다. 3~5단계는 아직 구현하지 않는다.
+
+실제 설정·Windows 절차·원본 이전·복구·실접속 점검은 `supabase/README.md`를 따른다. 실제 Supabase/Auth/두 물리 기기 연결은 접속 정보가 없어 미검증이며 로컬 PostgreSQL 및 HTTP 대역 검증과 구분한다.
