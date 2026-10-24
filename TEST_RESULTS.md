@@ -1,3 +1,11 @@
+# 2026-10-25(KST): 클라우드 자동 회귀 시스템
+
+- 기존 183개 검사 유지 + 29개 검사 추가. Linux/Python 3.12.14/pytest 8.4.2에서 기본 **206 통과·6 미실행**, 임시 PostgreSQL 16 포함 **212 통과·0 실패·0 미실행**.
+- PR/main Windows·Linux 전체 회귀 CI, Linux PostgreSQL/RLS CI, 별도 Supabase 수동 workflow, JSON/JUnit/Actions Summary 추가.
+- 실제 Supabase 전용 정보 없는 실행 **0 통과·0 실패·16 미실행**. 실제 Supabase/운영 자료 15건에는 접속하지 않음.
+- Windows 네이티브/원격 GitHub Actions는 미검증(API Forbidden). Linux 파일 잠금 모사와 기존 기능 회귀는 통과.
+- 자세한 범위·증거·실패 분류·한계: [CLOUD_TEST_REPORT.md](CLOUD_TEST_REPORT.md), 실행 안내: [supabase/TESTING.md](supabase/TESTING.md).
+
 # 공용 복구 사본 Windows 잠금 오류 수정 검증
 
 검증일: 2026-10-24 (한국 시간).

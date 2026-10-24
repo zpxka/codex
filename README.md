@@ -183,6 +183,10 @@ DB·CSV·백업은 개인정보가 포함될 수 있으므로 Git에 커밋하�
 
 Windows에서는 `.venv/bin/python` 대신 `.\.venv\Scripts\python.exe`를 사용하세요. 테스트 데이터는 `example.com` 주소를 사용하는 허구 자료이며 임시 디렉터리에만 저장됩니다. 구체적인 실행 결과와 검증 한계는 `TEST_RESULTS.md`를 참고하세요.
 
+PR 및 main 변경 시 **ReviewLab cloud regression**이 Windows·Linux 전체 회귀 검사와 Linux 임시 PostgreSQL/RLS 검사를 자동 실행합니다. 기본 테스트는 외부 HTTP 접속과 운영 설정 사용을 차단합니다. 실행별 JSON/JUnit 보고서는 GitHub Actions의 Summary·Artifacts에서 확인합니다. 로컬에서 보고서를 남기려면 `pytest` 명령에 `--junitxml=test-results/regression.xml --cloud-report=test-results/regression.json`을 추가하세요.
+
+별도 Supabase 테스트 프로젝트의 실접속 검증은 **Separate Supabase test project (manual)**에서만 실행하며, 전용 설정이 없으면 **미실행**으로 표시합니다. 운영 연구자료 15건은 테스트하지 않습니다. 초보자용 Windows 명령, 테스트 프로젝트·GitHub Secrets 설정, 장애 분류 및 정리 범위는 [클라우드 테스트 사용법](supabase/TESTING.md), 실제 수행 결과와 미검증 항목은 [CLOUD_TEST_REPORT.md](CLOUD_TEST_REPORT.md)를 참고하세요.
+
 ```text
 app.py                          # 실행 진입점
 reviewlab/config.py             # 실제/예시 모드 및 경로

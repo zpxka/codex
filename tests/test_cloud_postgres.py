@@ -18,9 +18,19 @@ CONTAINER=os.environ.get('REVIEWLAB_TEST_PG_CONTAINER')
 pytestmark=pytest.mark.skipif(not CONTAINER,reason='전용 PostgreSQL 테스트 컨테이너 미설정 (실제 Supabase 미접속)')
 
 
+@pytest.fixture(scope='module', autouse=True)
+def owned_test_container():
+    # 외부 환경변수로 운영 컨테이너를 지정해도 쓰기 전에 차단한다.
+    run_id = os.environ.get('REVIEWLAB_TEST_PG_RUN', '')
+    assert CONTAINER and CONTAINER.startswith('reviewlab-pg-test-') and len(run_id) == 32, '전용 runner가 만든 컨테이너만 허용합니다.'
+    result = subprocess.run(['docker', 'inspect', '--format', '{{ index .Config.Labels "reviewlab.test-run" }}', CONTAINER],
+                            capture_output=True, text=True, encoding='utf-8', check=True)
+    assert result.stdout.strip() == run_id, '테스트 컨테이너 소유 확인 실패'
+
+
 def sql(statement,check=True):
     result=subprocess.run(['docker','exec','-i',CONTAINER,'psql','-U','postgres','-d','reviewlab_test','-v','ON_ERROR_STOP=1','-XAtq'],
-                          input=statement,text=True,capture_output=True)
+                          input=statement,text=True,encoding='utf-8',capture_output=True)
     if check and result.returncode:raise AssertionError(result.stderr)
     return result
 
@@ -116,7 +126,7 @@ def test_postgres_all_tables_roundtrip_delete_and_link_retention(scope,tmp_path,
     from reviewlab.analysis.reviews import statistics,context,patterns
     from reviewlab.cloud.dataset import read_local,fingerprint
     a,_,wid=scope
-    local=Library(tmp_path/'source.db','actual');sid=Research(local).save(source)
+    local=Library(tmp_path/'source.db','actual');sid=Research(local).save(source,[local.tags()[0]['id']])
     Research(local).verify(sid,event,True)
     service=ReviewService(local);pid=service.create_project('허구 프로젝트')
     service.upload(pid,write_csv(['content','rating'],[['가상 내용',5]]),'허구 수집',True)
@@ -128,6 +138,15 @@ def test_postgres_all_tables_roundtrip_delete_and_link_retention(scope,tmp_path,
     assert commit(a,wid,data)['revision']==1
     restored=rpc(a,'read',args(wid))['data']
     assert fingerprint(restored)==fingerprint(data)
+    # 자료가 있는 상태에서 모든 업무 테이블의 RLS를 검사한다(빈 결과의 우연 방지).
+    for table in TABLES:
+        assert data[table]
+        member = sql(f"SET ROLE authenticated;SET request.jwt.claim.sub={quote(a)};SELECT count(*) FROM reviewlab.{table} WHERE workspace_id={quote(wid)};")
+        outsider = sql(f"SET ROLE authenticated;SET request.jwt.claim.sub={quote(scope[1])};SELECT count(*) FROM reviewlab.{table} WHERE workspace_id={quote(wid)};")
+        assert int(member.stdout.strip()) == len(data[table])
+        assert outsider.stdout.strip() == '0'
+        denied = sql(f"SET ROLE authenticated;SET request.jwt.claim.sub={quote(a)};DELETE FROM reviewlab.{table} WHERE workspace_id={quote(wid)};", False)
+        assert denied.returncode
     Research(local).delete(sid,True)
     changed=read_local(local.path,'actual')
     assert commit(a,wid,changed,rev=1)['revision']==2

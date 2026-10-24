@@ -203,3 +203,9 @@ Streamlit 사용자 세션 ─ Supabase Auth (HTTPS)
 현재 클라이언트 한도는 모드별 전체 20MB·50,000개 레코드다. 네트워크 비용·광범위 충돌 때문에 대규모 후속 단계에는 엔터티별 CAS/변경분 RPC가 필요하다. DB는 정규 테이블이므로 survey/document/AI/submission 테이블별 RPC로 확장할 수 있지만 각 단계에서 RLS·복합 FK·로컬 백업·전체 manifest·스키마 버전·기존 테스트를 함께 갱신해야 한다. 3~5단계는 아직 구현하지 않는다.
 
 실제 설정·Windows 절차·원본 이전·복구·실접속 점검은 `supabase/README.md`를 따른다. 실제 Supabase/Auth/두 물리 기기 연결은 접속 정보가 없어 미검증이며 로컬 PostgreSQL 및 HTTP 대역 검증과 구분한다.
+
+### 자동 회귀 테스트 계층
+
+`tests/conftest.py`는 기본 pytest의 데이터 경로를 임시 디렉터리로 격리하고 앱 공용 설정·외부 HTTP를 차단한다. HTTP/Auth 대역·Streamlit AppTest·임시 SQLite 검사는 Windows/Linux 전체 매트릭스로 실행한다. `scripts/test_cloud_postgres.py`는 실행별 라벨을 가진 새 Docker PostgreSQL만 대상으로 실제 SQL·11개 테이블 RLS·CAS·멱등성과 전체 회귀를 검사한다. 이때 Auth는 로컬 대역이다.
+
+`scripts/test_supabase_live.py`는 앱 secrets를 읽지 않는 독립 수동 실행기다. 별도 테스트 프로젝트 URL/ref·전용 계정 2개·명시적 확인값만 허용하고, 실행 중 생성 응답을 받은 작업공간의 가상 자료만 정리한다. 운영 작업공간 ID나 관리 키는 받지 않는다. 접속 정보가 없으면 미실행을 기록하고, 외부 통신·인증/스키마 설정·검증 결과 불일치를 분리한다. 실제 HTTP RLS 확인이 스키마 비공개로 불가능하면 해당 항목만 미실행으로 표시한다. JSON/JUnit/CI Summary에 실행 상태와 테스트 위치를 남기되 실제 접속 정보·원시 오류는 남기지 않는다. 운영 데이터·DB 스키마 변경은 이 테스트 시스템의 범위 밖이다.

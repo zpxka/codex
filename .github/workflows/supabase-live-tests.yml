@@ -1,0 +1,43 @@
+name: Separate Supabase test project (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+# CI마다 전용 작업공간을 만들지만 운영 설정을 공유하지 않는다. 동시 수동 실행도 직렬화.
+concurrency:
+  group: supabase-live-tests
+  cancel-in-progress: false
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    environment: supabase-test
+    timeout-minutes: 15
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Opt-in isolated test project; missing settings are reported as skipped
+        env:
+          REVIEWLAB_LIVE_TEST_CONFIRM: ${{ vars.REVIEWLAB_LIVE_TEST_CONFIRM }}
+          REVIEWLAB_TEST_PROJECT_REF: ${{ vars.REVIEWLAB_TEST_PROJECT_REF }}
+          REVIEWLAB_TEST_SUPABASE_URL: ${{ secrets.REVIEWLAB_TEST_SUPABASE_URL }}
+          REVIEWLAB_TEST_SUPABASE_KEY: ${{ secrets.REVIEWLAB_TEST_SUPABASE_KEY }}
+          REVIEWLAB_TEST_EMAIL_A: ${{ secrets.REVIEWLAB_TEST_EMAIL_A }}
+          REVIEWLAB_TEST_PASSWORD_A: ${{ secrets.REVIEWLAB_TEST_PASSWORD_A }}
+          REVIEWLAB_TEST_EMAIL_B: ${{ secrets.REVIEWLAB_TEST_EMAIL_B }}
+          REVIEWLAB_TEST_PASSWORD_B: ${{ secrets.REVIEWLAB_TEST_PASSWORD_B }}
+        run: python scripts/test_supabase_live.py
+      - name: Report sanitized live results
+        if: always()
+        run: python scripts/summarize_tests.py test-results/supabase-live.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: supabase-live-sanitized-report
+          path: test-results/
+          retention-days: 14

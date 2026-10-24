@@ -10,6 +10,7 @@ __pycache__/
 data/
 backups/
 exports/
+test-results/
 *.egg-info/
 .env.*
 !.env.example

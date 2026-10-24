@@ -1,0 +1,68 @@
+name: ReviewLab cloud regression
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloud-regression-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  PYTHONUTF8: '1'
+  MPLBACKEND: Agg
+  REVIEWLAB_STORAGE: local
+jobs:
+  regression:
+    name: Full regression (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.lock
+            requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
+      - name: All local and simulated cloud tests (no remote credentials)
+        run: python -m pytest -q -ra --junitxml=test-results/regression.xml --cloud-report=test-results/regression.json
+      - name: Report counts and failing file names
+        if: always()
+        shell: bash
+        run: python scripts/summarize_tests.py test-results/regression.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-${{ matrix.os }}
+          path: test-results/
+          retention-days: 14
+  postgres:
+    name: PostgreSQL 16 SQL, RLS and full regression (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Disposable labelled container only (no Supabase credentials)
+        run: python scripts/test_cloud_postgres.py -ra --junitxml=test-results/postgres.xml --cloud-report=test-results/postgres.json
+      - name: Report counts and failing file names
+        if: always()
+        run: python scripts/summarize_tests.py test-results/postgres.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-regression
+          path: test-results/
+          retention-days: 14

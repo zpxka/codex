@@ -2,6 +2,7 @@ from io import BytesIO
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
+import pytest
 
 from reviewlab.cloud.library import CloudLibrary
 from reviewlab.repositories.library import Library
@@ -126,3 +127,34 @@ def test_workspace_switch_never_carries_unsaved_edit_into_other_workspace(tmp_pa
     assert not app.exception
     assert element(app.text_input,'자료 제목 *').value=='다른 작업공간의 원문'
     assert two.states[(two.workspace,'actual')]['data']['sources'][0]['title']=='다른 작업공간의 원문'
+
+
+@pytest.mark.parametrize('after_commit', [False, True])
+def test_ui_network_failure_never_claims_success_or_automatically_resends(tmp_path, monkeypatch, after_commit):
+    app, server, client = start_cloud(tmp_path, monkeypatch)
+    app.sidebar.radio[0].set_value('자료 등록').run()
+    element(app.text_input, '자료 제목 *').set_value('[가상] 장애 화면 검사')
+    element(app.text_input, '원문 URL *').set_value('https://example.invalid/network-ui')
+    if after_commit:
+        client.lose_response = True
+    else:
+        # 작업공간 조회는 정상, 실제 저장 전송에서만 연결이 끊기는 상황.
+        original = client.rpc
+        def fail_commit(name, params=None):
+            if name == 'commit':
+                client.offline = True
+                try:
+                    return original(name, params)
+                finally:
+                    client.offline = False
+            return original(name, params)
+        client.rpc = fail_commit
+    element(app.button, '자료 저장').click().run()
+    assert app.error and not app.success and not app.exception
+    commits = sum(name == 'commit' for name, _ in client.calls)
+    assert commits == 1
+    assert len(server.states[(server.workspace, 'actual')]['data']['sources']) == int(after_commit)
+    client.offline = False
+    element(app.button, '공용 자료 새로고침').click().run()
+    assert not app.exception and not app.success
+    assert sum(name == 'commit' for name, _ in client.calls) == commits

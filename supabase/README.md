@@ -1,6 +1,6 @@
 # Supabase 공용 데이터베이스 설정
 
-현재 저장소에는 연동 코드와 SQL·테스트가 준비되어 있습니다. 실제 Supabase 프로젝트를 생성하거나 연결한 상태는 아닙니다. 아래 프로젝트 설정은 사용자가 직접 수행해야 합니다. 화면 명칭은 Supabase 서비스 개편에 따라 조금 달라질 수 있습니다.
+현재 저장소에는 연동 코드와 SQL·테스트가 준비되어 있습니다. 아래는 최초 설정 절차이며 이미 운영 프로젝트 연결·자료 이전을 마쳤다면 프로젝트/SQL을 다시 생성하지 마세요. 개발 환경에는 실제 접속 정보가 없어 실접속 자동 검증은 미실행입니다. 자동 테스트에는 운영 프로젝트와 다른 전용 프로젝트를 사용합니다([테스트 사용법](TESTING.md)). 화면 명칭은 Supabase 서비스 개편에 따라 조금 달라질 수 있습니다.
 
 ## 1. 사용자가 프로젝트를 만들기
 
@@ -162,4 +162,4 @@ Windows에서 비밀값 없이 회귀 검사를 실행할 수 있습니다.
 .\.venv\Scripts\python.exe -m pytest tests/test_cloud_preflight.py tests/test_cloud_storage.py tests/test_cloud_ui.py -q
 ```
 
-GitHub **Actions → Windows cloud storage regression → Run workflow**에도 동일한 Windows 검사를 추가했습니다. 개발 환경의 Linux 검사와 Windows 파일 잠금 모사 검사는 통과했지만, Windows 실기/CI 실행 결과는 별도 확인이 필요합니다.
+GitHub **Actions → ReviewLab cloud regression → Run workflow**의 Windows 전체 회귀 검사에 이 검사를 통합했습니다. 개발 환경의 Linux 검사와 Windows 파일 잠금 모사 검사는 통과했지만, Windows 실기/CI 실행 결과는 별도 확인이 필요합니다. PR/main 자동 실행과 별도 Supabase 프로젝트 검증 절차는 [클라우드 테스트 사용법](TESTING.md)을 참고하세요.
