@@ -1,6 +1,6 @@
 # ReviewLab 아키텍처 설계
 
-1·2단계는 아래 구조로 구현했다. 3~5단계는 설계 제안이며 아직 구현하지 않았다. 단계별 범위는 `PROJECT_PLAN.md`, 실제 실행·제약은 `README.md`, 검증 결과는 `TEST_RESULTS.md`를 따른다.
+1·2·3단계는 아래 구조로 구현했다. 4~5단계는 설계 제안이며 아직 구현하지 않았다. 단계별 범위는 `PROJECT_PLAN.md`, 실제 실행·제약은 `README.md`, 검증 결과는 `TEST_RESULTS.md`를 따른다.
 
 ## 기술 스택
 
@@ -200,7 +200,7 @@ Streamlit 사용자 세션 ─ Supabase Auth (HTTPS)
 
 같은 ID의 원문·연결·순서 있는 이력은 모두 같아야 건너뛸 수 있다. 다른 ID의 의미상 중복은 사용자 확인 후 별도로 보존한다. 같은 이름 태그는 별도 확인 후 ID 연결을 재사용한다. 원본 파일은 쓰지 않으며 과거 검증/검토를 새 검증으로 확정하지 않는다. UUID 비표준 문자열이나 잘못된 원본/정규화 데이터는 임의로 변환하지 않고 차단한다.
 
-현재 클라이언트 한도는 모드별 전체 20MB·50,000개 레코드다. 네트워크 비용·광범위 충돌 때문에 대규모 후속 단계에는 엔터티별 CAS/변경분 RPC가 필요하다. DB는 정규 테이블이므로 survey/document/AI/submission 테이블별 RPC로 확장할 수 있지만 각 단계에서 RLS·복합 FK·로컬 백업·전체 manifest·스키마 버전·기존 테스트를 함께 갱신해야 한다. 3~5단계는 아직 구현하지 않는다.
+현재 클라이언트 한도는 모드별 전체 20MB·50,000개 레코드다. 네트워크 비용·광범위 충돌 때문에 대규모 후속 단계에는 엔터티별 CAS/변경분 RPC가 필요하다. DB는 정규 테이블이므로 survey/document/AI/submission 테이블별 RPC로 확장할 수 있지만 각 단계에서 RLS·복합 FK·로컬 백업·전체 manifest·스키마 버전·기존 테스트를 함께 갱신해야 한다. 4~5단계는 아직 구현하지 않는다.
 
 실제 설정·Windows 절차·원본 이전·복구·실접속 점검은 `supabase/README.md`를 따른다. 실제 Supabase/Auth/두 물리 기기 연결은 접속 정보가 없어 미검증이며 로컬 PostgreSQL 및 HTTP 대역 검증과 구분한다.
 
@@ -209,3 +209,11 @@ Streamlit 사용자 세션 ─ Supabase Auth (HTTPS)
 `tests/conftest.py`는 기본 pytest의 데이터 경로를 임시 디렉터리로 격리하고 앱 공용 설정·외부 HTTP를 차단한다. HTTP/Auth 대역·Streamlit AppTest·임시 SQLite 검사는 Windows/Linux 전체 매트릭스로 실행한다. `scripts/test_cloud_postgres.py`는 실행별 라벨을 가진 새 Docker PostgreSQL만 대상으로 실제 SQL·11개 테이블 RLS·CAS·멱등성과 전체 회귀를 검사한다. 이때 Auth는 로컬 대역이다.
 
 `scripts/test_supabase_live.py`는 앱 secrets를 읽지 않는 독립 수동 실행기다. 별도 테스트 프로젝트 URL/ref·전용 계정 2개·명시적 확인값만 허용하고, 실행 중 생성 응답을 받은 작업공간의 가상 자료만 정리한다. 운영 작업공간 ID나 관리 키는 받지 않는다. 접속 정보가 없으면 미실행을 기록하고, 외부 통신·인증/스키마 설정·검증 결과 불일치를 분리한다. 실제 HTTP RLS 확인이 스키마 비공개로 불가능하면 해당 항목만 미실행으로 표시한다. JSON/JUnit/CI Summary에 실행 상태와 테스트 위치를 남기되 실제 접속 정보·원시 오류는 남기지 않는다. 운영 데이터·DB 스키마 변경은 이 테스트 시스템의 범위 밖이다.
+
+## 설문 시스템 (3단계)
+
+SQLite v3는 `survey_projects/questions/imports/responses/answers/analysis_runs` 6개 테이블을 추가한다. 원본 cell은 answers.raw_value에, 현재 문항 정의는 questions.config_json에, 원본 SHA/업로드 정의·제외 건수는 imports에, 입력 ID·필터·문항 정의 스냅샷·통계 결과는 analysis_runs에 분리한다. 원본 파일 전체나 제외된 개인정보 열은 보관하지 않는다. 같은 파일 중복은 프로젝트별 hash UNIQUE, 같은 응답 패턴은 경고 후 보존한다. 데이터 삭제·원문 수정 UI는 제공하지 않는다.
+
+서비스 `services/surveys.py`, 통계 `analysis/surveys.py`, 전용 추가 백업 `services/survey_transfer.py`, UI `ui/surveys.py`로 분리했다. 설문 백업은 현재 모드 전체 설문만 포함하며 기존 참고문헌/리뷰 CSV 형식은 바꾸지 않는다. 전체 SQLite manifest와 공용 이전은 17개 테이블을 검증한다. 범위/필수값/척도/원본·설정/분석 입력 참조를 검사하고 원본은 역문항 변환 때도 바꾸지 않는다.
+
+Supabase v2 SQL은 추가 테이블의 작업공간/모드 FK·RLS·UNIQUE 및 v2 RPC를 생성한다. v1 조회는 버전 2를 알리고 v1 commit은 차단하여 구버전 전체 저장에 의한 설문 유실을 막는다. v1 테이블/데이터/receipt를 초기화하지 않는다. 신규 앱은 v2 전용 RPC만 사용하므로 운영 관리자의 SQL 승인·적용과 두 컴퓨터 동시 업데이트가 필요하다. 20MB/50,000레코드·모드 전체 CAS 한도는 동일하며 모든 답변 행도 합산한다. 세부 절차와 복구 한계는 supabase/SURVEY_UPGRADE.md를 따른다.

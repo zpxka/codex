@@ -37,7 +37,7 @@ def main():
         created=True
         phase='postgres_ready'
         for _ in range(30):
-            ready=subprocess.run(['docker','exec',name,'pg_isready','-U','postgres'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            ready=subprocess.run(['docker','exec',name,'psql','-U','postgres','-d','reviewlab_test','-XAtqc','SELECT 1'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             if ready.returncode==0:break
             time.sleep(.5)
         else:raise RuntimeError('테스트 PostgreSQL 시작 실패')
@@ -45,6 +45,8 @@ def main():
         phase='auth_stub_and_sql_migration'
         subprocess.run(command,input=BOOTSTRAP,text=True,encoding='utf-8',check=True,stdout=subprocess.DEVNULL)
         migration=ROOT/'supabase/migrations/202610240001_shared_storage.sql'
+        subprocess.run(command,input=migration.read_text(encoding='utf-8'),text=True,encoding='utf-8',check=True,stdout=subprocess.DEVNULL)
+        migration=ROOT/'supabase/migrations/202610250002_surveys.sql'
         subprocess.run(command,input=migration.read_text(encoding='utf-8'),text=True,encoding='utf-8',check=True,stdout=subprocess.DEVNULL)
         environment=dict(os.environ,REVIEWLAB_TEST_PG_CONTAINER=name,REVIEWLAB_TEST_PG_RUN=run_id,REVIEWLAB_STORAGE='local',PYTHONUTF8='1')
         phase='pytest'

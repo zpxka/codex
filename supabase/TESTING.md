@@ -54,7 +54,7 @@ Auth의 `auth.uid()`와 사용자 테이블은 로컬 대역입니다. 실제 SQ
 
 **현재 운영 프로젝트와 다른 새 Supabase 프로젝트**를 만듭니다. 프로젝트 참조 ID를 지정해도 코드가 그 프로젝트가 운영용인지 독립적으로 증명할 수는 없습니다. 설정 담당자가 별도 프로젝트임을 확인해야 합니다. 운영 키를 복사하지 마세요.
 
-1. 새 프로젝트에 기존 `supabase/migrations/202610240001_shared_storage.sql`을 한 번 적용합니다. 운영 DB에 SQL을 다시 적용하지 않습니다.
+1. 새 프로젝트에 기존 `supabase/migrations/202610240001_shared_storage.sql` 다음 `202610250002_surveys.sql` 순서로 한 번씩 적용합니다. 운영 DB에 SQL을 다시 적용하지 않습니다.
 2. Auth에 이메일 확인·비밀번호 설정을 마친 **서로 다른 테스트 계정 A, B**를 준비합니다. 실제 팀원 계정을 사용하지 않습니다. 공개 회원가입은 끕니다.
 3. GitHub 저장소 **Settings → Environments → New environment**에서 `supabase-test`를 만들고 가능하면 required reviewer 및 main 브랜치 제한을 설정합니다. PR 코드에는 비밀값을 전달하지 않습니다. 수동 실행 시에도 신뢰하는 main 브랜치를 선택합니다.
 4. 해당 Environment의 **Variables**에 아래를 설정합니다.

@@ -255,7 +255,7 @@ def test_wrong_mode_local_db_and_future_cloud_version_fail_closed(cloud,library,
     original=client.rpc
     def future(name,params=None):
         response=original(name,params)
-        if name=='read':response['schema_version']=2
+        if name=='read':response['schema_version']=999
         return response
     client.rpc=future
     with pytest.raises(CloudError,match='스키마'):

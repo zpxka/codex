@@ -1,3 +1,12 @@
+# 2026-10-25(KST): 3단계 설문조사 분석
+
+- Linux/Python 3.12.14/pytest 8.4.2에서 기본 전체 **234 통과·8 미실행**, 임시 PostgreSQL 16 포함 **242 통과·0 실패·0 미실행**. 기존 212개 검사와 설문 새 30개 검사 포함.
+- UTF-8/BOM/CP949·PII 제외·중복·오류 원자성·분모/역문항/다중 응답·교차표/평균/상관·한글 PNG·분석 기록·SQLite v3 백업/롤백·CSV 복원·설문 RLS·CAS·멱등성·구버전 저장 차단을 확인.
+- 별도 임시 v1 DB의 허구 참고문헌 15건·태그·검증 이력·revision·receipt가 v2 SQL 적용 후 동일함을 확인. 사용자 운영 15건과 Supabase에는 접속/수정하지 않음.
+- 실제 Supabase·Windows 네이티브·두 물리 기기는 미검증. 운영 SQL 자동 적용 없음. 기존 v1 SQL은 변경하지 않음.
+- 발견한 손상 백업의 답변 누락 은폐 문제를 독립 사전 검증으로 수정. PostgreSQL 준비 판정의 초기 DB 생성 race를 SELECT 1로 수정. 전체 재검사 통과.
+- 상세 변경/범위/제약: [SURVEY_DEVELOPMENT_REPORT.md](SURVEY_DEVELOPMENT_REPORT.md), [사용법](SURVEY_GUIDE.md), [승인 후 SQL v2·Windows 업데이트·롤백](supabase/SURVEY_UPGRADE.md).
+
 # 2026-10-25(KST): 클라우드 자동 회귀 시스템
 
 - 기존 183개 검사 유지 + 29개 검사 추가. Linux/Python 3.12.14/pytest 8.4.2에서 기본 **206 통과·6 미실행**, 임시 PostgreSQL 16 포함 **212 통과·0 실패·0 미실행**.

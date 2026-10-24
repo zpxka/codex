@@ -100,7 +100,7 @@ def test_mode_and_schema_protection(library):
     with pytest.raises(ValueError, match='모드'):
         Library(library.path, 'example')
     with library.connect() as db:
-        db.execute('INSERT INTO schema_migrations VALUES(3,?)', ('future',))
+        db.execute('INSERT INTO schema_migrations VALUES(999,?)', ('future',))
     with pytest.raises(ValueError, match='버전'):
         Library(library.path, 'actual')
 

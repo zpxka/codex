@@ -224,7 +224,9 @@ def test_migration_preserves_stage1_and_snapshot(tmp_path,service,source,library
     with library.connect() as db:
         for table in reversed(transfer.TABLES):
             db.execute(f'DROP TABLE {table}')
-        db.execute('DELETE FROM schema_migrations WHERE version=2')
+        from reviewlab.services.surveys import TABLES as SURVEY_TABLES
+        for table in reversed(SURVEY_TABLES): db.execute(f'DROP TABLE {table}')
+        db.execute('DELETE FROM schema_migrations WHERE version>=2')
     upgraded=Library(library.path,'actual')
     assert source_backup(upgraded)==before
     snapshots=list((library.path.parent/'backups').glob('before-change-*.sqlite3'))
@@ -241,7 +243,9 @@ def test_migration_failure_rolls_back(tmp_path,monkeypatch):
     with library.connect() as db:
         for table in reversed(transfer.TABLES):
             db.execute(f'DROP TABLE {table}')
-        db.execute('DELETE FROM schema_migrations WHERE version=2')
+        from reviewlab.services.surveys import TABLES as SURVEY_TABLES
+        for table in reversed(SURVEY_TABLES): db.execute(f'DROP TABLE {table}')
+        db.execute('DELETE FROM schema_migrations WHERE version>=2')
     original=Path.read_text
     def invalid(path,*args,**kwargs):
         if path.name=='002_reviews.sql':

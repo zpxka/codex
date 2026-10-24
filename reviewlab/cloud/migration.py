@@ -39,7 +39,7 @@ def child_signature(data,table,predicate):
 def project_signature(data,pid):
     ids={r['id'] for r in data['reviews'] if r['project_id']==pid}
     result={}
-    for table in TABLES[4:]:
+    for table in TABLES[4:11]:
         result[table]=child_signature(data,table,lambda r: r['id']==pid if table=='review_projects' else
             r['review_id'] in ids if table in ('review_notes','review_checks') else r['project_id']==pid)
     return result

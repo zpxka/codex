@@ -61,7 +61,7 @@ class CloudLibrary(Library):
 
     def reload(self):
         result=self.client.rpc('read',{'p_workspace':self.workspace_id,'p_mode':self.mode})
-        if not isinstance(result,dict) or result.get('schema_version')!=1 or result.get('workspace_id')!=self.workspace_id or result.get('mode')!=self.mode or type(result.get('revision')) is not int or result['revision']<0:
+        if not isinstance(result,dict) or result.get('schema_version')!=2 or result.get('workspace_id')!=self.workspace_id or result.get('mode')!=self.mode or type(result.get('revision')) is not int or result['revision']<0:
             raise CloudError('공용 DB 스키마·작업공간·모드가 맞지 않습니다. SQL 마이그레이션을 확인하세요.')
         data=validate(result['data'],self.mode)
         self._install(data)
@@ -70,7 +70,7 @@ class CloudLibrary(Library):
 
     def remote_revision(self):
         result=self.client.rpc('status',{'p_workspace':self.workspace_id,'p_mode':self.mode})
-        if not isinstance(result,dict) or result.get('schema_version')!=1 or type(result.get('revision')) is not int:
+        if not isinstance(result,dict) or result.get('schema_version')!=2 or type(result.get('revision')) is not int:
             raise CloudError('공용 DB 버전 응답이 올바르지 않습니다.')
         return result['revision']
 

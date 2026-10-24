@@ -123,7 +123,7 @@ def test_cloud_full_backup_restore_integrity_and_corruption_no_overwrite(pair, s
     ctx['input_ids'] = [row['id']]
     review_transfer.save_run(reviews.repo, pid, tables, ctx, patterns(rows))
     original = library.dataset()
-    assert all(original[t] for t in TABLES)  # 11개 테이블 모두 실제로 검사
+    assert all(original[t] for t in TABLES[:11])  # 11개 테이블 모두 실제로 검사
     snapshot = library.snapshot()
     assert fingerprint(read_local(snapshot, 'example')) == fingerprint(original)
     source_csv = transfer.export_backup(library)

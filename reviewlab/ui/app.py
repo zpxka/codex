@@ -12,7 +12,7 @@ from reviewlab.repositories.library import Library
 from reviewlab.services.research import Research
 from reviewlab.services.transfer import download_filename, export_backup, export_list, inspect_restore, restore
 
-PAGES = ("메인 대시보드", "자료 등록", "자료 목록", "검증 관리", "데이터 백업 및 복원", "설정 및 데이터 관리", "리뷰 분석", "공용 DB 관리")
+PAGES = ("메인 대시보드", "자료 등록", "자료 목록", "검증 관리", "데이터 백업 및 복원", "설정 및 데이터 관리", "리뷰 분석", "설문조사 분석", "공용 DB 관리")
 SORTS = ("등록일 최신순", "등록일 오래된순", "발행일 최신순", "발행일 오래된순")
 LABELS = {"title": "제목", "authors": "저자·기관", "publication_date": "발행일",
           "source_type": "자료 유형", "original_url": "원문 URL", "notes": "핵심 내용 메모",
@@ -288,7 +288,7 @@ def main():
         st.error(str(error))
         st.stop()
     storage = st.sidebar.selectbox("저장소", ("로컬 SQLite", "Supabase 공용 저장소"), index=1 if configured['storage']=="supabase" else 0, key="storage-backend")
-    st.sidebar.caption("1·2단계 · 연구자료와 리뷰 분석\n\n로컬·공용 저장소와 실제·예시 모드를 구분합니다.")
+    st.sidebar.caption("1·2·3단계 · 연구자료와 리뷰 분석\n\n로컬·공용 저장소와 실제·예시 모드를 구분합니다.")
     st.title(page)
     if mode == "example":
         st.warning("예시·연습 모드입니다. 여기에 넣은 자료는 실제 연구에 사용하지 마세요. 실제 자료와 별도 저장됩니다.")
@@ -324,6 +324,9 @@ def main():
         elif page == "리뷰 분석":
             from reviewlab.ui.reviews import main as reviews_main
             reviews_main(service.library)
+        elif page == "설문조사 분석":
+            from reviewlab.ui.surveys import main as surveys_main
+            surveys_main(service.library)
         elif page == "공용 DB 관리":
             from reviewlab.ui.cloud import management
             management(service.library, mode)

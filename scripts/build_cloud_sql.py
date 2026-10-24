@@ -40,7 +40,7 @@ def keys(table):
     return [c['name'] for c in sorted(SCHEMA[table],key=lambda c:c['pk']) if c['pk']]
 
 
-def main():
+def render():
     out=[HEADER]
     import sqlite3
     from reviewlab.cloud.dataset import empty_schema
@@ -138,6 +138,7 @@ GRANT EXECUTE ON FUNCTION public.reviewlab_workspaces(), public.reviewlab_create
 COMMENT ON FUNCTION public.reviewlab_commit(uuid,text,bigint,uuid,jsonb) IS 'Authenticated member-only atomic CAS commit; service_role not used. New tables require a versioned migration.';
 COMMIT;
 ''')
-    Path('supabase/migrations/202610240001_shared_storage.sql').write_text(''.join(out))
+    return ''.join(out)
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    raise SystemExit('v1 SQL은 보존됩니다. scripts/build_survey_sql.py를 사용하세요.')

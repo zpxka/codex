@@ -23,7 +23,7 @@ class Library:
             tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             if not tables:
                 fresh = True
-                script = (Path(__file__).parents[1] / "db/migrations/001_initial.sql").read_text()
+                script = (Path(__file__).parents[1] / "db/migrations/001_initial.sql").read_text(encoding="utf-8")
                 # executescript는 암시적 COMMIT을 수행하므로 직접 BEGIN을 포함한다.
                 db.executescript("BEGIN IMMEDIATE;\n" + script)
                 db.execute("INSERT INTO project_metadata VALUES(1,?)", (mode,))
@@ -33,24 +33,43 @@ class Library:
                 if not {"schema_migrations", "project_metadata"}.issubset(tables):
                     raise ValueError("ReviewLab 데이터베이스가 아닙니다. 데이터 경로를 확인하세요.")
                 versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]
-                if versions not in ([1], [1, 2]):
+                if versions not in ([1], [1, 2], [1, 2, 3]):
                     raise ValueError("지원하지 않는 DB 버전입니다. 원본을 보존하고 앱 버전을 확인하세요.")
                 row = db.execute("SELECT data_kind FROM project_metadata WHERE id=1").fetchone()
                 if not row or row[0] != mode:
                     raise ValueError("DB의 실제/예시 구분이 현재 모드와 다릅니다.")
-                if versions == [1, 2] and not {
+                if versions in ([1, 2], [1, 2, 3]) and not {
                     "review_projects", "review_imports", "reviews", "review_notes", "review_checks",
                     "review_source_links", "review_analysis_runs"
                 }.issubset(tables):
                     raise ValueError("DB 버전과 리뷰 테이블 구조가 일치하지 않습니다.")
         if versions == [1]:
             self.migrate_reviews(backup=not fresh)
+        self.migrate_surveys(backup=not fresh and versions == [1, 2])
+
+    def migrate_surveys(self, backup=True):
+        with self.connect() as db:
+            versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]
+            if versions == [1, 2, 3]:
+                required = {'survey_projects', 'survey_questions', 'survey_imports', 'survey_responses', 'survey_answers', 'survey_analysis_runs'}
+                if not required <= {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
+                    raise ValueError('설문 테이블 구조가 DB 버전과 다릅니다.')
+                return
+        if backup: self.snapshot()
+        script = (Path(__file__).parents[1] / 'db/migrations/003_surveys.sql').read_text(encoding='utf-8')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT max(version) FROM schema_migrations').fetchone()[0] == 3:
+                return
+            for statement in script.split(';'):
+                if statement.strip(): db.execute(statement)
+            db.execute('INSERT INTO schema_migrations VALUES(3,?)', (now(),))
 
     def migrate_reviews(self, backup=True):
         # 기존 DB 사본 생성에 실패하면 마이그레이션을 시작하지 않는다.
         if backup:
             self.snapshot()
-        script = (Path(__file__).parents[1] / "db/migrations/002_reviews.sql").read_text()
+        script = (Path(__file__).parents[1] / "db/migrations/002_reviews.sql").read_text(encoding="utf-8")
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]

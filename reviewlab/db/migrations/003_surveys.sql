@@ -1,0 +1,6 @@
+CREATE TABLE survey_projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, purpose TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL, sample TEXT NOT NULL, method TEXT NOT NULL, memo TEXT NOT NULL, data_kind TEXT NOT NULL CHECK(data_kind IN ('actual','example')), created_at TEXT NOT NULL);
+CREATE TABLE survey_questions(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES survey_projects(id), name TEXT NOT NULL, variable TEXT NOT NULL, config_json TEXT NOT NULL, UNIQUE(project_id,variable));
+CREATE TABLE survey_imports(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES survey_projects(id), file_sha256 TEXT NOT NULL, settings_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(project_id,file_sha256));
+CREATE TABLE survey_responses(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES survey_projects(id), import_id TEXT NOT NULL REFERENCES survey_imports(id), source_row INTEGER NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE survey_answers(id TEXT PRIMARY KEY, response_id TEXT NOT NULL REFERENCES survey_responses(id), question_id TEXT NOT NULL REFERENCES survey_questions(id), raw_value TEXT NOT NULL, UNIQUE(response_id,question_id));
+CREATE TABLE survey_analysis_runs(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES survey_projects(id), config_json TEXT NOT NULL, results_json TEXT NOT NULL, created_at TEXT NOT NULL);
