@@ -1,5 +1,6 @@
 """SQLite → 공용 데이터의 추가 전용 이전. 중복은 명시적 확인 없이는 실행하지 않는다."""
 from copy import deepcopy
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 from uuid import uuid4
@@ -16,7 +17,7 @@ def freeze_local(path,mode):
     destination=source.parent/'backups'/f'before-cloud-{uuid4()}.sqlite3'
     destination.parent.mkdir(parents=True,exist_ok=True)
     try:
-        with sqlite3.connect(source.as_uri()+'?mode=ro',uri=True) as db,sqlite3.connect(destination) as target:
+        with closing(sqlite3.connect(source.as_uri()+'?mode=ro',uri=True)) as db, closing(sqlite3.connect(destination)) as target, target:
             db.backup(target)
         private_file(destination)
         return destination,read_local(destination,mode)

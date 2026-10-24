@@ -2,10 +2,11 @@
 
 SQLite는 사용자 세션 전용 작업 사본이다. 성공은 서버의 CAS 커밋 응답 뒤에만 반환한다.
 """
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import sqlite3
@@ -17,6 +18,8 @@ from reviewlab.cloud.dataset import TABLES, read_dataset, insert_dataset, valida
 from reviewlab.models import valid_id
 from reviewlab.repositories.library import Library
 
+
+LOGGER = logging.getLogger("reviewlab.cloud.preflight")
 
 def private_file(path):
     os.chmod(path,0o600)
@@ -43,7 +46,7 @@ class CloudLibrary(Library):
         return f'{self.project_key}-{self.workspace_id}-{self.mode}-{self.client.user_id}-{self.revision}-{self.read_generation}'
 
     def _install(self,data):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('PRAGMA foreign_keys=ON')
             db.execute('BEGIN IMMEDIATE')
             for table in reversed(TABLES):db.execute(f'DELETE FROM {table}')
@@ -52,7 +55,7 @@ class CloudLibrary(Library):
                 raise CloudError('공용 데이터의 참조 무결성 검사에 실패했습니다.')
 
     def dataset(self):
-        with sqlite3.connect(self.path) as db:
+        with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('BEGIN')
             return read_dataset(db)
 
@@ -88,12 +91,15 @@ class CloudLibrary(Library):
         destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
         temporary=destination.with_name('.pending-'+str(uuid4())+'.sqlite3')
         try:
-            with sqlite3.connect(self.path) as source,sqlite3.connect(temporary) as target:
+            with closing(sqlite3.connect(self.path)) as source, closing(sqlite3.connect(temporary)) as target, target:
                 source.backup(target)
                 if target.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise sqlite3.DatabaseError()
             private_file(temporary);os.replace(temporary,destination)
             return destination
-        finally:temporary.unlink(missing_ok=True)
+        finally:
+            # 이 요청이 만든 임시 파일만 정리하며, 정리 실패로 원래 예외를 가리지 않는다.
+            try:temporary.unlink(missing_ok=True)
+            except OSError:pass
 
     def snapshot(self):
         if not self._initializing and self._broken:
@@ -102,27 +108,51 @@ class CloudLibrary(Library):
 
     def _metadata(self,path,metadata):
         temporary=path.with_name('.'+path.name+'.tmp')
-        temporary.write_text(json.dumps(metadata,ensure_ascii=False),encoding='utf-8')
+        serialized=json.dumps(metadata,ensure_ascii=False,allow_nan=False)
+        temporary.write_text(serialized,encoding='utf-8')
         private_file(temporary);os.replace(temporary,path)
 
     def _flush(self):
         operation=str(uuid4());self._broken=True
         pending=self.root/'pending'/f'{operation}.sqlite3'
-        try:
-            self._copy(pending)
-            data=self.dataset()
-            info=dict(operation_id=operation,workspace_id=self.workspace_id,mode=self.mode,project_key=self.project_key,
-                      expected_revision=self.revision,fingerprint=fingerprint(data),state='unconfirmed')
-            self._metadata(pending.with_suffix('.json'),info)
-            data=validate(data,self.mode)
-        except (OSError,sqlite3.Error,ValueError):
-            raise CloudError('서버 전송 전 검사·복구 사본 생성에 실패해 저장하지 않았습니다. 새로고침 전 입력을 복사하고 디스크 공간·자료 크기(20MB)를 확인하세요. 복구 사본 경로: '+str(pending)) from None
+        self._preflight('recovery_copy',operation,lambda:self._copy(pending))
+        data=self._preflight('dataset_read',operation,self.dataset)
+        digest=self._preflight('fingerprint',operation,lambda:fingerprint(data))
+        info=dict(operation_id=operation,workspace_id=self.workspace_id,mode=self.mode,project_key=self.project_key,
+                  expected_revision=self.revision,fingerprint=digest,state='unconfirmed')
+        self._preflight('metadata_write',operation,lambda:self._metadata(pending.with_suffix('.json'),info))
+        data=self._preflight('validation',operation,lambda:validate(data,self.mode))
         try:
             result=self._send(data,info)
         except CloudError as error:
             raise type(error)(f'{error} 복구 사본: {pending} · 요청 ID: {operation}. 연결 복구 후 데이터 관리의 미확인 요청에서 확인하세요.') from None
         self._broken=False;self.revision=result['revision']
         self._finish(pending,info)
+
+    def _preflight(self,stage,operation,action):
+        try:
+            return action()
+        except (OSError,sqlite3.Error,ValueError,TypeError,OverflowError,RecursionError) as error:
+            if isinstance(error,OSError):
+                code='FILE_WRITE'
+                help_text='복구 파일 쓰기·교체에 실패했습니다. 폴더 권한·디스크 공간·파일 잠금을 확인하세요.'
+            elif isinstance(error,sqlite3.Error):
+                code='SQLITE_BACKUP' if stage=='recovery_copy' else 'SQLITE_READ'
+                help_text='SQLite 복구 사본 생성·무결성 검사에 실패했습니다.' if stage=='recovery_copy' else '작업 사본을 읽지 못했습니다.'
+            elif stage in ('fingerprint','metadata_write'):
+                code='JSON_SERIALIZE'
+                help_text='복구 정보의 JSON 직렬화에 실패했습니다. 입력값의 자료형·숫자를 확인하세요.'
+            else:
+                code='DATA_VALIDATION'
+                help_text='데이터 유효성 검사에 실패했습니다. 필수값·형식·참조·자료 크기를 확인하세요.'
+            # 예외 문자열/traceback/파일 경로/자료/계정/키/토큰은 기록하지 않는다.
+            errno=getattr(error,'errno',None);winerror=getattr(error,'winerror',None)
+            LOGGER.error('cloud_preflight_failed code=%s stage=%s operation=%s errno=%s winerror=%s',
+                         code,stage,operation,errno if type(errno) is int else None,
+                         winerror if type(winerror) is int else None)
+            raise CloudError(f'서버 전송 전 중단 [{code}/{stage}]. {help_text} '
+                             f'이 요청은 서버로 전송하지 않았습니다. 요청 ID: {operation}. '
+                             '입력을 복사하고 기존 사본을 보존하세요. 자동 재전송하지 않습니다.') from None
 
     def _send(self,data,info):
         result=self.client.rpc('commit',{'p_workspace':self.workspace_id,'p_mode':self.mode,

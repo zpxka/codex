@@ -135,3 +135,31 @@ $env:REVIEWLAB_STORAGE = "supabase"
 소규모 연구팀용 첫 버전으로 공용 모드별 데이터는 **20MB·50,000개 레코드(자료·연결·이력 포함)**로 제한합니다. 리뷰 프로젝트 5,000리뷰·CSV 제한도 그대로 적용됩니다. 전송/검사 비용과 보수적인 충돌 범위 때문에 대규모 데이터·동시 다수 사용자 작업에는 행 단위 변경 RPC로 개선해야 합니다.
 
 3~5단계는 아직 구현하지 않았습니다. 새 테이블은 독립 `survey_*`, `document_*`, `ai_*`, `submission_*` 이름으로 추가하고 작업공간·모드 FK, RLS, 백업, 버전 마이그레이션을 함께 확장해야 합니다. Supabase SQL v2와 클라이언트 지원 버전 확인 없이 테이블을 임의로 추가/변경하지 마세요.
+
+## Windows에서 ‘서버 전송 전’ 오류가 난 경우
+
+복구 사본을 만드는 코드에서 `with sqlite3.connect(...)`가 연결까지 닫는 것으로 잘못 처리하던 결함을 수정했습니다. SQLite 연결 컨텍스트는 커밋/롤백만 수행합니다. 열린 복구 파일을 `os.replace()`로 교체하면 Windows에서 공유 위반(WinError 32)이 발생할 수 있습니다. 수정 버전은 백업·무결성 검사 뒤 연결을 닫은 다음 파일을 교체하며, 데이터 읽기·검증과 이전 사본 연결도 닫습니다.
+
+이전의 단일 오류 문구만으로 이미 발생한 노트북 예외를 확정할 수는 없습니다. 업데이트 후 문제가 계속되면 다음 **코드와 단계**, 터미널의 숫자 `errno/winerror`로 구분합니다. 설정·비밀번호·키·토큰·자료 본문을 공유하지 마세요.
+
+| 코드 | 의미 |
+| --- | --- |
+| `SQLITE_BACKUP/recovery_copy` | SQLite 백업 API 또는 사본 무결성 검사 실패 |
+| `FILE_WRITE/recovery_copy` | 복구 폴더 생성·권한 설정·파일 교체 실패. WinError 32라면 파일 잠금 확인 |
+| `SQLITE_READ/dataset_read` | 작업 사본의 데이터 읽기 실패 |
+| `JSON_SERIALIZE/fingerprint` 또는 `metadata_write` | 지문/메타데이터 JSON 직렬화 실패 |
+| `FILE_WRITE/metadata_write` | 복구 메타데이터 파일 쓰기·교체 실패 |
+| `DATA_VALIDATION/validation` | 필수값·자료형·참조·크기 등 유효성 검사 실패 |
+
+터미널 로거 `reviewlab.cloud.preflight`는 코드·단계·임의 요청 ID·숫자 오류 코드만 기록합니다. 예외 원문, traceback, 파일 경로, 사용자 자료나 인증 정보는 기록하지 않습니다. JSON 메타데이터 작성 전 실패했다면 SQLite 후보 파일만 `cloud/.../pending/<요청 ID>.sqlite3`에 남을 수 있습니다. 기존 파일을 일괄 삭제하지 마세요. 복구 파일 생성 자체가 실패하면 입력을 먼저 복사한 뒤 새로고침하세요.
+
+새 ‘서버 전송 전 중단’ 오류는 해당 요청에서 commit RPC를 호출하지 않았다는 뜻입니다. 반면 서버 전송 뒤 응답을 확인하지 못한 요청은 미확인 상태로 유지합니다. 업데이트·재시작·새로고침은 이러한 요청을 자동 전송하지 않습니다. 이미 남은 요청을 다시 처리하려면 내용을 확인한 뒤 기존 수동 재확인 버튼을 이용하세요. SQL 마이그레이션이나 로그인 설정을 다시 할 필요는 없습니다.
+
+Windows에서 비밀값 없이 회귀 검사를 실행할 수 있습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest tests/test_cloud_preflight.py tests/test_cloud_storage.py tests/test_cloud_ui.py -q
+```
+
+GitHub **Actions → Windows cloud storage regression → Run workflow**에도 동일한 Windows 검사를 추가했습니다. 개발 환경의 Linux 검사와 Windows 파일 잠금 모사 검사는 통과했지만, Windows 실기/CI 실행 결과는 별도 확인이 필요합니다.

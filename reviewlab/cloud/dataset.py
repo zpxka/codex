@@ -2,7 +2,7 @@
 import hashlib
 import json
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, closing
 from uuid import UUID
 from pathlib import Path
 
@@ -26,7 +26,7 @@ def empty_schema(db, mode):
 
 
 def schema():
-    with sqlite3.connect(':memory:') as db:
+    with closing(sqlite3.connect(':memory:')) as db, db:
         empty_schema(db, 'example')
         return {t: [dict(zip(('cid','name','type','notnull','default','pk'), row))
                     for row in db.execute(f'PRAGMA table_info({t})')] for t in TABLES}
@@ -108,7 +108,7 @@ def validate(data, mode):
             validate_event(r)
         if any(p['data_kind'] != mode for p in data['review_projects']):
             raise ValueError('실제/예시 리뷰 프로젝트가 섞여 있습니다.')
-        with sqlite3.connect(':memory:') as db:
+        with closing(sqlite3.connect(':memory:')) as db, db:
             db.execute('PRAGMA foreign_keys=ON')
             empty_schema(db,mode)
             insert_dataset(db,data)
@@ -146,7 +146,7 @@ def read_local(path, mode):
     if not path.is_file():
         raise ValueError('기존 SQLite 파일을 찾지 못했습니다. 원래 앱의 저장 경로를 확인하세요.')
     try:
-        with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True) as db:
+        with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True)) as db, db:
             db.execute('PRAGMA trusted_schema=OFF')
             db.execute('PRAGMA query_only=ON')
             db.execute('BEGIN')
