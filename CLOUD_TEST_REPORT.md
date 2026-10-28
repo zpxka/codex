@@ -1,3 +1,5 @@
+> 2026-10-28 4단계 확장 검증: 전체 266개 통과(임시 PostgreSQL 포함). 원문 파일·근거·새 RLS/구버전 차단·전체 파일 ZIP 복구 검증을 추가했습니다. 실제 Supabase Storage/Auth 및 Windows는 미검증이며, 최신 세부 결과는 [TEST_RESULTS.md](TEST_RESULTS.md), 운영 승인 사항은 [STAGE4_REPORT.md](STAGE4_REPORT.md)를 따릅니다. 아래는 이전 클라우드 테스트 시스템 구축 당시의 결과 기록입니다.
+
 > 이 문서는 3단계 추가 전 자동 테스트 구축 기록입니다. 설문을 포함한 최신 결과는 [TEST_RESULTS.md](TEST_RESULTS.md)와 [SURVEY_DEVELOPMENT_REPORT.md](SURVEY_DEVELOPMENT_REPORT.md)를 참고하세요.
 
 # ReviewLab 클라우드 안정성 자동 테스트 결과

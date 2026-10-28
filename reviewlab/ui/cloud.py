@@ -18,7 +18,7 @@ from reviewlab.config import database_path
 
 NAMES={'tags':'태그','sources':'참고문헌','source_tags':'자료-태그 연결','verification_events':'원문 검증 이력',
        'review_projects':'리뷰 프로젝트','review_imports':'리뷰 수집 기록','reviews':'리뷰 원본','review_notes':'리뷰 메모',
-       'review_checks':'리뷰 검토 이력','review_source_links':'참고문헌 연결','review_analysis_runs':'분석 실행 기록', 'survey_projects':'설문 프로젝트', 'survey_questions':'설문 문항', 'survey_imports':'설문 업로드', 'survey_responses':'설문 응답', 'survey_answers':'문항별 원본', 'survey_analysis_runs':'설문 분석 기록'}
+       'review_checks':'리뷰 검토 이력','review_source_links':'참고문헌 연결','review_analysis_runs':'분석 실행 기록', 'document_files':'원문·초고 파일', 'document_notes':'근거·검토 이력', 'survey_projects':'설문 프로젝트', 'survey_questions':'설문 문항', 'survey_imports':'설문 업로드', 'survey_responses':'설문 응답', 'survey_answers':'문항별 원본', 'survey_analysis_runs':'설문 분석 기록'}
 
 
 def config():
@@ -74,7 +74,7 @@ def library(mode,page):
         except CloudError:st.session_state['notice']='이 기기의 로그인 정보는 지웠습니다. 서버 로그아웃 확인은 인터넷 복구 후 진행하세요.'
         clear_cloud();st.rerun()
     spaces=client.rpc('workspaces')
-    if not isinstance(spaces,dict) or spaces.get('schema_version')!=2:
+    if not isinstance(spaces,dict) or spaces.get('schema_version')!=3:
         raise CloudError('Supabase SQL 마이그레이션 버전을 확인하세요.')
     choices={r['id']:r['name'] for r in spaces['workspaces']}
     with st.sidebar.expander('새 공용 작업공간 만들기',expanded=not choices):

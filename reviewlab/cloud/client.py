@@ -68,8 +68,8 @@ class SupabaseClient:
                 raise CloudConflict('다른 기기에서 자료가 변경되었습니다. 저장을 중단했습니다. 입력 내용을 복사한 뒤 공용 자료를 새로고침하고 다시 수정하세요.')
             if response.status_code in (401,403) or code=='42501':
                 raise CloudError('로그인 만료 또는 작업공간 접근 권한이 없습니다. 다시 로그인하고 팀의 작업공간 권한을 확인하세요.')
-            if response.status_code==404 and '/rpc/' in path and path.endswith('_v2'):
-                raise CloudError('Supabase SQL v2가 필요합니다. 앱을 중지하고 안내된 백업·확인 절차 후 관리자가 새 마이그레이션을 적용하세요.')
+            if response.status_code==404 and '/rpc/' in path and path.endswith('_v3'):
+                raise CloudError('Supabase SQL v3가 필요합니다. 앱을 중지하고 안내된 백업·확인 절차 후 관리자가 새 마이그레이션을 적용하세요.')
             if response.status_code in (400,404) and ('/auth/' in path):
                 raise CloudError('로그인 정보를 확인하세요. 이메일 확인·초대 수락·비밀번호 설정은 Supabase 프로젝트에서 먼저 완료해야 합니다.')
             raise CloudError('공용 DB 요청을 완료하지 못했습니다. 서버 스키마 버전·권한·입력값을 확인하세요. 원시 오류와 인증 정보는 표시하지 않습니다.')
@@ -111,4 +111,4 @@ class SupabaseClient:
         if name not in ('workspaces','create_workspace','status','read','commit'):
             raise CloudError('지원하지 않는 공용 저장소 요청입니다.')
         self.refresh()
-        return self._request('POST','/rest/v1/rpc/reviewlab_'+name+('_v2' if name!='create_workspace' else ''),params or {},token=self.access_token)
+        return self._request('POST','/rest/v1/rpc/reviewlab_'+name+('_v3' if name!='create_workspace' else ''),params or {},token=self.access_token)

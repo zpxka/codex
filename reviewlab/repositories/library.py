@@ -33,12 +33,12 @@ class Library:
                 if not {"schema_migrations", "project_metadata"}.issubset(tables):
                     raise ValueError("ReviewLab 데이터베이스가 아닙니다. 데이터 경로를 확인하세요.")
                 versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]
-                if versions not in ([1], [1, 2], [1, 2, 3]):
+                if versions not in ([1], [1, 2], [1, 2, 3], [1, 2, 3, 4]):
                     raise ValueError("지원하지 않는 DB 버전입니다. 원본을 보존하고 앱 버전을 확인하세요.")
                 row = db.execute("SELECT data_kind FROM project_metadata WHERE id=1").fetchone()
                 if not row or row[0] != mode:
                     raise ValueError("DB의 실제/예시 구분이 현재 모드와 다릅니다.")
-                if versions in ([1, 2], [1, 2, 3]) and not {
+                if versions in ([1, 2], [1, 2, 3], [1, 2, 3, 4]) and not {
                     "review_projects", "review_imports", "reviews", "review_notes", "review_checks",
                     "review_source_links", "review_analysis_runs"
                 }.issubset(tables):
@@ -46,11 +46,27 @@ class Library:
         if versions == [1]:
             self.migrate_reviews(backup=not fresh)
         self.migrate_surveys(backup=not fresh and versions == [1, 2])
+        self.migrate_documents(backup=not fresh and versions == [1, 2, 3])
+
+    def migrate_documents(self,backup=True):
+        with self.connect() as db:
+            if db.execute('SELECT max(version) FROM schema_migrations').fetchone()[0]==4:
+                if not {'document_files','document_notes'} <= {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
+                    raise ValueError('원문 테이블이 없습니다.')
+                return
+        if backup:self.snapshot()
+        script=(Path(__file__).parents[1]/'db/migrations/004_documents.sql').read_text(encoding='utf-8')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT max(version) FROM schema_migrations').fetchone()[0]==4:return
+            for statement in script.split(';'):
+                if statement.strip():db.execute(statement)
+            db.execute('INSERT INTO schema_migrations VALUES(4,?)',(now(),))
 
     def migrate_surveys(self, backup=True):
         with self.connect() as db:
             versions = [r[0] for r in db.execute("SELECT version FROM schema_migrations ORDER BY version")]
-            if versions == [1, 2, 3]:
+            if versions in ([1, 2, 3], [1, 2, 3, 4]):
                 required = {'survey_projects', 'survey_questions', 'survey_imports', 'survey_responses', 'survey_answers', 'survey_analysis_runs'}
                 if not required <= {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}:
                     raise ValueError('설문 테이블 구조가 DB 버전과 다릅니다.')

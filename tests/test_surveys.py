@@ -138,7 +138,7 @@ def test_sqlite_v2_migration_and_rollback_preserves_references(tmp_path,source,m
         with pytest.raises(sqlite3.Error): Library(path,'actual')
     assert path.read_bytes()==before
     library=Library(path,'actual');Research(library).save(source)
-    with library.connect() as db: assert db.execute('SELECT max(version) FROM schema_migrations').fetchone()[0]==3
+    with library.connect() as db: assert db.execute('SELECT max(version) FROM schema_migrations').fetchone()[0]==4
     backups=list((tmp_path/'backups').glob('before-change-*'));assert backups
     assert all(read_local(p,'actual')['survey_projects']==[] for p in backups)
 

@@ -114,7 +114,7 @@ def test_workspace_switch_never_carries_unsaved_edit_into_other_workspace(tmp_pa
     original=client.rpc
     def route(name,params=None):
         if name=='workspaces':
-            return dict(schema_version=2,workspaces=[dict(id=one.workspace,name='A'),dict(id=two.workspace,name='B')])
+            return dict(schema_version=3,workspaces=[dict(id=one.workspace,name='A'),dict(id=two.workspace,name='B')])
         if (params or {}).get('p_workspace')==two.workspace:return other.rpc(name,params)
         return original(name,params)
     client.rpc=route

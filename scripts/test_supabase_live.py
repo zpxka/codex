@@ -110,7 +110,7 @@ def denied(client, workspace, mode='example', write=False):
     if write:
         params.update(p_expected_revision=0, p_operation=str(uuid4()), p_data={t: [] for t in TABLES})
     # HTTP 상태/SQLSTATE만 판정하며 원시 응답은 결과/로그에 기록하지 않는다.
-    response = client.http.request('POST', client.url + '/rest/v1/rpc/reviewlab_' + ('commit_v2' if write else 'read_v2'),
+    response = client.http.request('POST', client.url + '/rest/v1/rpc/reviewlab_' + ('commit_v3' if write else 'read_v3'),
         headers={'apikey': client.key, **({'Authorization': 'Bearer ' + client.access_token} if client.access_token else {})},
         json=params, timeout=(5, 30), allow_redirects=False)
     if response.status_code >= 500:

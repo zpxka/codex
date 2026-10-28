@@ -40,7 +40,7 @@ def quote(value):return "'"+str(value).replace("'","''")+"'"
 
 def rpc(user,function,args=''):
     uid=quote(user) if user else "''"
-    result=sql(f"SET ROLE {'authenticated' if user else 'anon'}; SET request.jwt.claim.sub={uid}; SELECT to_jsonb(public.reviewlab_{function + ('_v2' if function!='create_workspace' else '')}({args}));",False)
+    result=sql(f"SET ROLE {'authenticated' if user else 'anon'}; SET request.jwt.claim.sub={uid}; SELECT to_jsonb(public.reviewlab_{function + ('_v3' if function!='create_workspace' else '')}({args}));",False)
     if result.returncode:return result
     return json.loads(result.stdout.strip())
 

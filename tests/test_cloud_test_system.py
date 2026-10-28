@@ -156,6 +156,7 @@ def test_postgres_runner_only_cleans_its_created_container_and_classifies_setup(
     migration.parent.mkdir(parents=True)
     migration.write_text('-- 허구 테스트용 SQL', encoding='utf-8')
     (migration.parent/'202610250002_surveys.sql').write_text('-- 테스트 SQL',encoding='utf-8')
+    (migration.parent/'202610270003_documents.sql').write_text('-- 테스트 SQL',encoding='utf-8')
     monkeypatch.setattr(runner, 'ROOT', tmp_path)
     monkeypatch.setattr(runner.sys, 'argv', ['test_cloud_postgres.py'])
     calls = []

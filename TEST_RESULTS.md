@@ -1,3 +1,18 @@
+# 2026-10-28(KST): 4단계 원문·근거 분석·초고 검토
+
+- 최종 전체 실행: **266 통과 / 0 실패 / 0 미실행**, Linux, Python 3.12.14, pytest 8.4.2, 임시 PostgreSQL 16. 기존 242개 검사 + 원문 관련 24개 검사. 실제 연구자료는 사용하지 않았다.
+- 실행 명령: `.venv/bin/python scripts/test_cloud_postgres.py -ra --junitxml=test-results/stage4.xml --cloud-report=test-results/stage4.json` (24.53초). 별도 전체 백업 왕복 검사도 단독 실행하여 통과했다.
+- 한국어 PDF의 2페이지 근거 위치, DOCX 문단/표, UTF-8 TXT 검색, 스캔·암호화·손상 PDF, 원본 누락 차단, 불변 분석 이력, 주장-근거 연결, 문장 비교와 검토 제안을 검증했다.
+- 원본/추출 파일/메타데이터 ZIP 왕복, 1~4단계 19개 테이블 및 검증·리뷰 검토·설문 분석 이력 보존, 중복·모드 오류·손상 파일·조작된 추출 내용 거부, SQLite v3→v4 이전 실패 롤백과 사전 백업을 확인했다.
+- 두 클라우드 세션과 Storage HTTP 대역으로 파일 공유·근거 저장·동시 충돌·응답 유실 시 자동 재전송 금지를 확인했다. 임시 PostgreSQL에서 DB RLS·모드 분리·구버전 v2 저장 차단, 최소 Storage 테이블 대역에서 private 파일 정책을 검증했다.
+- 외부 AI 응답 대역으로 매 호출 승인, 선택 범위 밖/날조 인용 거부, 기기별 일간 호출·예상 비용 한도를 확인했다. Streamlit AppTest로 검색/수동 분석, 초고, ZIP 생성, 원본 다운로드 준비 및 AI 설정 유지 흐름을 확인했다.
+- 개발 중 발견된 문제: SQLite 단독 이전으로 원문이 누락될 위험, 해시만 맞춘 조작된 추출 JSON의 복원 위험, 화면 전환 시 AI 설정 소실을 보완했다. 새 테스트의 폰트 패키지 직접 import는 Python 3.12의 distutils 제거로 실패해 기존 차트 모듈의 호환 폰트 등록을 재사용했다. 태그 추가 함수의 반환값을 잘못 사용한 테스트 fixture도 실제 ID 조회 방식으로 수정 후 재실행했다.
+- **미검증:** 실제 Windows/macOS, 실제 Supabase Auth·Storage HTTP 및 두 물리적 기기, 유료 OpenAI API, 운영 자료 무손실 이전의 실서비스 검증. Linux PostgreSQL/Auth·Storage 대역 테스트 통과를 실제 Supabase 성공으로 해석하지 않는다. GitHub Actions의 Windows 결과는 이 보고서 작성 시 확인하지 않았다.
+- **미구현:** OCR 실행, 완전한 맞춤법/논리 자동 판정, 문헌 결론 자동 생성, 서버 원문 파일 자동 백업 스케줄러, 대용량 스트리밍 백업, 5단계. 파일 포함 ZIP은 수동이며 기존 자동 DB 백업만으로 파일이 복구되지 않는다.
+- 운영 SQL/Storage/RLS 변경과 기존 연구자료·백업 변경은 수행하지 않았다. [사용·승인·Windows 업데이트·복구 절차](DOCUMENTS_GUIDE.md), [전체 개발 보고](STAGE4_REPORT.md).
+
+---
+
 # 2026-10-25(KST): 3단계 설문조사 분석
 
 - Linux/Python 3.12.14/pytest 8.4.2에서 기본 전체 **234 통과·8 미실행**, 임시 PostgreSQL 16 포함 **242 통과·0 실패·0 미실행**. 기존 212개 검사와 설문 새 30개 검사 포함.

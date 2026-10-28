@@ -48,6 +48,8 @@ def main():
         subprocess.run(command,input=migration.read_text(encoding='utf-8'),text=True,encoding='utf-8',check=True,stdout=subprocess.DEVNULL)
         migration=ROOT/'supabase/migrations/202610250002_surveys.sql'
         subprocess.run(command,input=migration.read_text(encoding='utf-8'),text=True,encoding='utf-8',check=True,stdout=subprocess.DEVNULL)
+        migration=ROOT/'supabase/migrations/202610270003_documents.sql'
+        subprocess.run(command,input=migration.read_text(encoding='utf-8'),text=True,encoding='utf-8',check=True,stdout=subprocess.DEVNULL)
         environment=dict(os.environ,REVIEWLAB_TEST_PG_CONTAINER=name,REVIEWLAB_TEST_PG_RUN=run_id,REVIEWLAB_STORAGE='local',PYTHONUTF8='1')
         phase='pytest'
         exit_code=subprocess.run([sys.executable,'-m','pytest','-q',*sys.argv[1:]],cwd=ROOT,env=environment).returncode

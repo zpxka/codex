@@ -1,6 +1,6 @@
 # ReviewLab 아키텍처 설계
 
-1·2·3단계는 아래 구조로 구현했다. 4~5단계는 설계 제안이며 아직 구현하지 않았다. 단계별 범위는 `PROJECT_PLAN.md`, 실제 실행·제약은 `README.md`, 검증 결과는 `TEST_RESULTS.md`를 따른다.
+1·2·3단계와 개편된 4단계는 아래 구조로 구현했다. 5단계는 설계 제안이며 아직 구현하지 않았다. 단계별 범위는 `PROJECT_PLAN.md`, 실제 실행·제약은 `README.md`, 검증 결과는 `TEST_RESULTS.md`를 따른다.
 
 ## 기술 스택
 
@@ -14,7 +14,7 @@
 | 테스트 | pytest, Streamlit AppTest | 입력 규칙·저장·통계 테스트와 실제 화면 흐름을 검증한다. |
 | 의존성 관리 | `pyproject.toml`, `requirements.txt`, `requirements.lock` | 직접 의존성과 Linux/Python 3.12 전체 설치 버전을 고정한다. |
 
-외부 AI 서비스·크롤러·메시지 큐는 포함하지 않는다. 공용 저장 모드는 Supabase Auth와 작업공간 권한을 사용하며, 앱 자체의 공개 웹 배포는 별도 범위다. 실제 Supabase 프로젝트 접속은 아직 미검증이다.
+외부 AI 인용 탐색은 선택적으로 제공하며 크롤러·메시지 큐는 포함하지 않는다. 공용 저장 모드는 Supabase Auth와 작업공간 권한을 사용하며, 앱 자체의 공개 웹 배포는 별도 범위다. 실제 Supabase 프로젝트 접속은 아직 미검증이다.
 
 ## 계층과 데이터 흐름
 
@@ -89,8 +89,8 @@ URL 원문은 보존하고 같은 URL 또는 같은 제목·저자·발행일을
 | 도입 단계 | 데이터 | 연결·추적 원칙 |
 | --- | --- | --- |
 | 2 (구현) | `review_projects`, `review_imports`, `reviews`, `review_notes`, `review_checks`, `review_source_links`, `review_analysis_runs` | 상세 구조는 아래 2단계 항목 참조 |
-| 3 | `survey_variables`, `survey_responses`, `survey_answers` | 문항·척도·값 라벨·복수 선택·결측 코드를 데이터 사전으로 관리. 직접 식별정보와 동의 범위를 가져오기 전에 점검 |
-| 4 | `document_versions`, `document_review_notes`, `ai_usage_records`, `ai_decisions` | 원고 버전과 검토 위치 연결. AI 사용 도구·모델(알면)·시각·질문·답변·판단 이유·확인 출처 기록 |
+| 3 (구현) | `survey_projects`, `survey_questions`, `survey_imports`, `survey_responses`, `survey_answers`, `survey_analysis_runs` | 문항·척도·값 라벨·복수 선택·결측 코드를 데이터 사전으로 관리. 직접 식별정보와 동의 범위를 가져오기 전에 점검 |
+| 4 (구현) | `document_files`, `document_notes` 및 별도 파일 저장소 | 불변 원문/초고 버전·텍스트 해시, 근거 위치·범위·연구자 확인 이력. AI 사용 기록 메뉴 제외 |
 | 5 | `export_runs`, `submission_items` | 산출물을 분석 실행·원본 데이터 구분·출처·생성 시각·내보내기 설정과 연결 |
 
 2단계는 허용된 CSV 필드의 원문을 읽기 전용 JSON으로 보존하고 분석용 값은 별도 열로 만든다. 파일 전체·파일명은 보관하지 않고 SHA-256과 수집 경위를 기록한다. 경로 탈출·크기 제한·허용 확장자·실제 파싱 결과를 검사한다. CSV 내보내기 시 스프레드시트 수식 실행 위험이 있는 셀을 안전하게 처리하고 처리 내역을 표시한다.
@@ -153,7 +153,7 @@ UI는 `ui/reviews.py`, 입력 규칙과 가져오기는 `services/reviews.py`, �
 
 복원 전 필수 열·엄격한 필드 목록·자료형·UUID·시각·척도·원본/정규화 일치·수집 개수·분석 입력 참조를 검사한다. 메모리 SQLite에서 외래키·고유키·NOT NULL까지 검사한 뒤 현재 DB 충돌을 검사한다. 실제 반영 직전에 사본을 만들고 단일 트랜잭션으로 추가한다. 같은 프로젝트 ID는 전체를 건너뛰고 다른 프로젝트와 내부 ID가 충돌하면 전체 거부한다. 다른 프로젝트 간 동일 내용은 병합하지 않는다. 참고문헌은 자동 생성하지 않으며 대상에 같은 ID가 없으면 연결 메타데이터만 보존한다.
 
-3단계는 `survey_*` 테이블에 문항 사전·다중 응답·결측 코드·동의/수집 경위를 둔다. 4단계 원고 검토 메모는 이미 리뷰 분석에 쓰는 `review_notes`와 충돌하지 않도록 `document_review_notes` 이름을 사용한다. 새 버전마다 기존 두 단계 CSV 호환성과 데이터 분리를 회귀 검증한다.
+3단계는 `survey_*` 테이블에 문항 사전·다중 응답·결측 코드·동의/수집 경위를 둔다. 4단계 원고 검토 메모는 이미 리뷰 분석에 쓰는 `review_notes`와 충돌하지 않도록 `document_notes` 이름을 사용한다. 새 버전마다 기존 두 단계 CSV 호환성과 데이터 분리를 회귀 검증한다.
 
 ## 일반 참고문헌 CSV 일괄 등록
 
@@ -200,7 +200,7 @@ Streamlit 사용자 세션 ─ Supabase Auth (HTTPS)
 
 같은 ID의 원문·연결·순서 있는 이력은 모두 같아야 건너뛸 수 있다. 다른 ID의 의미상 중복은 사용자 확인 후 별도로 보존한다. 같은 이름 태그는 별도 확인 후 ID 연결을 재사용한다. 원본 파일은 쓰지 않으며 과거 검증/검토를 새 검증으로 확정하지 않는다. UUID 비표준 문자열이나 잘못된 원본/정규화 데이터는 임의로 변환하지 않고 차단한다.
 
-현재 클라이언트 한도는 모드별 전체 20MB·50,000개 레코드다. 네트워크 비용·광범위 충돌 때문에 대규모 후속 단계에는 엔터티별 CAS/변경분 RPC가 필요하다. DB는 정규 테이블이므로 survey/document/AI/submission 테이블별 RPC로 확장할 수 있지만 각 단계에서 RLS·복합 FK·로컬 백업·전체 manifest·스키마 버전·기존 테스트를 함께 갱신해야 한다. 4~5단계는 아직 구현하지 않는다.
+현재 클라이언트 한도는 모드별 전체 20MB·50,000개 레코드다. 네트워크 비용·광범위 충돌 때문에 대규모 후속 단계에는 엔터티별 CAS/변경분 RPC가 필요하다. DB는 정규 테이블이므로 survey/document/submission 테이블별 RPC로 확장할 수 있지만 각 단계에서 RLS·복합 FK·로컬 백업·전체 manifest·스키마 버전·기존 테스트를 함께 갱신해야 한다. 4단계의 추가 구조는 아래 항목을 따르며 5단계는 아직 구현하지 않는다.
 
 실제 설정·Windows 절차·원본 이전·복구·실접속 점검은 `supabase/README.md`를 따른다. 실제 Supabase/Auth/두 물리 기기 연결은 접속 정보가 없어 미검증이며 로컬 PostgreSQL 및 HTTP 대역 검증과 구분한다.
 
@@ -217,3 +217,9 @@ SQLite v3는 `survey_projects/questions/imports/responses/answers/analysis_runs`
 서비스 `services/surveys.py`, 통계 `analysis/surveys.py`, 전용 추가 백업 `services/survey_transfer.py`, UI `ui/surveys.py`로 분리했다. 설문 백업은 현재 모드 전체 설문만 포함하며 기존 참고문헌/리뷰 CSV 형식은 바꾸지 않는다. 전체 SQLite manifest와 공용 이전은 17개 테이블을 검증한다. 범위/필수값/척도/원본·설정/분석 입력 참조를 검사하고 원본은 역문항 변환 때도 바꾸지 않는다.
 
 Supabase v2 SQL은 추가 테이블의 작업공간/모드 FK·RLS·UNIQUE 및 v2 RPC를 생성한다. v1 조회는 버전 2를 알리고 v1 commit은 차단하여 구버전 전체 저장에 의한 설문 유실을 막는다. v1 테이블/데이터/receipt를 초기화하지 않는다. 신규 앱은 v2 전용 RPC만 사용하므로 운영 관리자의 SQL 승인·적용과 두 컴퓨터 동시 업데이트가 필요하다. 20MB/50,000레코드·모드 전체 CAS 한도는 동일하며 모든 답변 행도 합산한다. 세부 절차와 복구 한계는 supabase/SURVEY_UPGRADE.md를 따른다.
+
+## 4단계 저장 구조
+SQLite v4/Supabase v3: document_files(참고문헌 스냅샷·불변 파일/텍스트 해시·상태), document_notes(범위·위치·실제 구절·해석·확인 이력). 바이너리 및 추출 JSON은 로컬 해시 파일 또는 private Storage로 분리한다. 전체 DB manifest는 19개 테이블이다. 기존 모드 전체 CAS/멱등성은 유지하며 v2 저장은 차단한다. 원본 삭제는 제공하지 않으며 참고문헌 삭제는 파일 연결을 NULL로 만들고 서지 스냅샷·파일·분석은 보존한다. ZIP은 전체 DB와 참조 파일을 함께 검증/추가 복원한다. 파일 업로드 후 DB 실패는 고아 파일로 보존하며 자동 재전송·삭제하지 않는다. 서비스/분석/UI 모듈은 documents.py, 파일 묶음은 document_transfer.py, 선택 AI는 document_ai.py로 분리한다. 상세 정책은 DOCUMENTS_GUIDE.md 참조.
+
+
+4단계 파일은 로컬에서는 모드별 DB 옆 `documents/`에 둔다. 공용은 사용자 JWT와 workspace/mode/hash 경로로 읽고 추가하며 overwrite/delete를 사용하지 않는다. 최대 10MB 파일·200페이지·추출 JSON 1MB, 파일 포함 백업은 메타데이터 합산 100MB·1,999개 파일 한도다. 원문이 있는 DB의 SQLite 단독 클라우드 이전은 차단하고 ZIP 추가 복원으로 안내한다. 원문 버전/분석 의견은 추가만 가능하고 원문 직접 삭제는 구현하지 않았다. 예산 제한용 로컬 DB에는 UTC 날짜·호출 횟수·예상 비용만 저장하며 질문/답변 사용 이력 테이블을 만들지 않는다.

@@ -1,3 +1,5 @@
+> 4단계 사용 전 [SQL v3·Private Storage·파일 복구 안내](../DOCUMENTS_GUIDE.md)를 검토하세요. 운영에는 자동 적용하지 않았습니다.
+
 > **3단계 업데이트:** 기존 v1 사용자는 v1 SQL을 다시 실행하지 마세요. [SQL v2·두 기기 업데이트·롤백 절차](SURVEY_UPGRADE.md)를 먼저 검토하세요. 운영 적용은 자동 수행하지 않습니다.
 
 # Supabase 공용 데이터베이스 설정
@@ -9,7 +11,7 @@
 1. Supabase 계정을 만들고 대시보드에서 **New project**를 선택합니다.
 2. 연구팀용 프로젝트를 만들고 가까운 리전을 고릅니다. DB 비밀번호는 비밀번호 관리자에 보관합니다. ReviewLab 앱에는 DB 비밀번호나 직접 연결 문자열을 넣지 않습니다.
 3. 프로젝트가 준비되면 **SQL Editor → New query**에서 [202610240001_shared_storage.sql](migrations/202610240001_shared_storage.sql) 전체를 실행합니다. 프로젝트 소유자/관리자가 **한 번** 적용하는 파일입니다. 실제 데이터가 있는 기존 프로젝트에 임의의 DROP/초기화 SQL을 실행하지 마세요.
-4. SQL Editor에서 `select version, applied_at from reviewlab.schema_migrations;`로 버전 1을 확인합니다. 이 스키마는 SQLite의 스키마 1·2와 별도 관리됩니다.
+4. SQL Editor에서 `select version, applied_at from reviewlab.schema_migrations;`로 버전 1을 확인합니다. 현재 앱은 이어서 설문 v2 → 원문 v3 SQL 및 별도 Storage 정책을 관리자 승인 후 적용해야 합니다([적용 순서](../DOCUMENTS_GUIDE.md)). 이 스키마는 SQLite의 스키마 1~4와 별도 관리됩니다.
 5. 프로젝트 설정의 **API / Data API / Connect** 영역에서 **Project URL**과 **Publishable key**를 찾습니다. 기존 프로젝트라면 **legacy anon key**도 지원합니다. `service_role`, `sb_secret_...`, DB 연결 문자열은 앱에서 사용하지 않습니다. 실제 키를 GitHub나 채팅에 올리지 마세요.
 
 이 SQL은 `reviewlab` 스키마에 정규 테이블을 만들고 `public`에는 제한된 RPC 함수만 만듭니다. Data API에는 `public`만 노출하는 기본 구성을 유지하세요. `reviewlab` 스키마를 공개 API 노출 목록에 추가할 필요가 없습니다. 테이블을 만들면서 자동 생성되는 공개 읽기 정책을 별도로 추가하지 마세요.

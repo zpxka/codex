@@ -107,6 +107,8 @@ def prepare(library,source_path):
     if library._broken:
         raise CloudError('미확인 저장 요청을 처리하거나 공용 자료를 새로고침한 뒤 이전하세요.')
     backup,data=freeze_local(source_path,library.mode)
+    if data['document_files']:
+        raise CloudError('원문이 연결된 DB는 SQLite 파일만으로 이전할 수 없습니다. 로컬 모드에서 원문·논문 검토 → 파일 포함 백업·복원의 ZIP을 만든 뒤 공용 모드에서 추가 복원하세요. 이전 전 DB 사본은 보존했습니다.')
     result=plan(data,library.dataset(),library.mode)
     result.update(backup_path=backup,expected_revision=library.revision,workspace_id=library.workspace_id,mode=library.mode)
     return result

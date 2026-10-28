@@ -30,15 +30,15 @@ class MemoryClient:
         if self.offline:raise CloudUnavailable('테스트 대역: 연결 끊김')
         s=self.server
         if self.user_id not in s.members:raise CloudError('테스트 대역: 권한 없음')
-        if name=='workspaces':return dict(schema_version=2,workspaces=[dict(id=s.workspace,name='테스트 작업공간')])
+        if name=='workspaces':return dict(schema_version=3,workspaces=[dict(id=s.workspace,name='테스트 작업공간')])
         if name=='create_workspace':raise CloudError('테스트 대역은 작업공간 생성 미지원')
         if p.get('p_workspace')!=s.workspace:raise CloudError('테스트 대역: 다른 작업공간')
         mode=p['p_mode'];key=(s.workspace,mode)
         if mode not in ('actual','example'):raise CloudError('테스트 대역: 잘못된 모드')
         with s.lock:
             state=s.states.setdefault(key,dict(revision=0,data={t:[] for t in TABLES}))
-            if name=='status':return dict(schema_version=2,revision=state['revision'])
-            if name=='read':return dict(schema_version=2,workspace_id=s.workspace,mode=mode,**deepcopy(state))
+            if name=='status':return dict(schema_version=3,revision=state['revision'])
+            if name=='read':return dict(schema_version=3,workspace_id=s.workspace,mode=mode,**deepcopy(state))
             if name=='commit':
                 op=(key,p['p_operation']);payload=canonical(p['p_data'])
                 if op in s.receipts:

@@ -12,7 +12,9 @@ TABLES = ('tags', 'sources', 'source_tags', 'verification_events', 'review_proje
           'reviews', 'review_notes', 'review_checks', 'review_source_links', 'review_analysis_runs')
 from reviewlab.services.surveys import TABLES as SURVEY_TABLES
 LEGACY_TABLES = TABLES
-TABLES = TABLES + SURVEY_TABLES
+V2_TABLES = TABLES + SURVEY_TABLES
+from reviewlab.services.documents import TABLES as DOCUMENT_TABLES
+TABLES = V2_TABLES + DOCUMENT_TABLES
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_ROWS = 50000
@@ -24,9 +26,9 @@ def canonical(value):
 
 def empty_schema(db, mode):
     root = Path(__file__).parents[1] / 'db/migrations'
-    db.executescript(''.join((root/name).read_text(encoding='utf-8') for name in ('001_initial.sql','002_reviews.sql','003_surveys.sql')))
+    db.executescript(''.join((root/name).read_text(encoding='utf-8') for name in ('001_initial.sql','002_reviews.sql','003_surveys.sql','004_documents.sql')))
     db.execute('INSERT INTO project_metadata VALUES(1,?)', (mode,))
-    db.execute("INSERT INTO schema_migrations VALUES(1,'cloud-copy'),(2,'cloud-copy'),(3,'cloud-copy')")
+    db.execute("INSERT INTO schema_migrations VALUES(1,'cloud-copy'),(2,'cloud-copy'),(3,'cloud-copy'),(4,'cloud-copy')")
 
 
 def schema():
@@ -110,6 +112,8 @@ def validate(data, mode):
             tag_name(r['name'])
         for r in data['verification_events']:
             validate_event(r)
+        from reviewlab.services.document_transfer import validate_metadata
+        validate_metadata(data)
         from reviewlab.services.survey_transfer import validate_bundle
         validate_bundle(data, mode)
         if any(p['data_kind'] != mode for p in data['review_projects']):
@@ -161,10 +165,10 @@ def read_local(path, mode):
             if db.execute('SELECT data_kind FROM project_metadata WHERE id=1').fetchone() != (mode,):
                 raise ValueError('SQLite의 실제/예시 모드가 현재 모드와 다릅니다.')
             versions=[r[0] for r in db.execute('SELECT version FROM schema_migrations ORDER BY version')]
-            if versions not in ([1],[1,2],[1,2,3]):
+            if versions not in ([1],[1,2],[1,2,3],[1,2,3,4]):
                 raise ValueError('지원하지 않는 SQLite 스키마 버전입니다.')
             tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            needed=TABLES if versions==[1,2,3] else LEGACY_TABLES if versions==[1,2] else TABLES[:4]
+            needed=TABLES if versions==[1,2,3,4] else V2_TABLES if versions==[1,2,3] else LEGACY_TABLES if versions==[1,2] else TABLES[:4]
             if not set(needed)<=tables:
                 raise ValueError('필수 SQLite 테이블이 없습니다.')
             db.row_factory=sqlite3.Row

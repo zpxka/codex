@@ -224,6 +224,8 @@ def test_migration_preserves_stage1_and_snapshot(tmp_path,service,source,library
     with library.connect() as db:
         for table in reversed(transfer.TABLES):
             db.execute(f'DROP TABLE {table}')
+        from reviewlab.services.documents import TABLES as DOCUMENT_TABLES
+        for table in reversed(DOCUMENT_TABLES): db.execute(f'DROP TABLE {table}')
         from reviewlab.services.surveys import TABLES as SURVEY_TABLES
         for table in reversed(SURVEY_TABLES): db.execute(f'DROP TABLE {table}')
         db.execute('DELETE FROM schema_migrations WHERE version>=2')
@@ -243,6 +245,8 @@ def test_migration_failure_rolls_back(tmp_path,monkeypatch):
     with library.connect() as db:
         for table in reversed(transfer.TABLES):
             db.execute(f'DROP TABLE {table}')
+        from reviewlab.services.documents import TABLES as DOCUMENT_TABLES
+        for table in reversed(DOCUMENT_TABLES): db.execute(f'DROP TABLE {table}')
         from reviewlab.services.surveys import TABLES as SURVEY_TABLES
         for table in reversed(SURVEY_TABLES): db.execute(f'DROP TABLE {table}')
         db.execute('DELETE FROM schema_migrations WHERE version>=2')
