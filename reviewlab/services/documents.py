@@ -1,4 +1,5 @@
 """원본 불변 파일 저장·추출·위치 기반 근거. 외부 URL 수집 없음."""
+import logging
 import hashlib
 import io
 import json
@@ -61,11 +62,32 @@ def extract(blob,extension):
         return 'extraction_failed',[]
 
 
+_STORAGE_CODES={'NoSuchKey':'object_missing','not_found':'object_missing','NoSuchBucket':'bucket_missing','AccessDenied':'access_denied','Unauthorized':'authentication','InvalidJWT':'authentication','InvalidMimeType':'mime_type','EntityTooLarge':'size_limit','ResourceAlreadyExists':'already_exists'}
+
+
+def storage_failure(operation,status,category,phase='file'):
+    # 응답 본문, URL/경로, 헤더, 예외 원문은 절대 기록하지 않는다.
+    logging.getLogger(__name__).warning('storage operation=%s http=%s category=%s phase=%s',operation,status,category,phase)
+    return ValueError(f'Storage 실패: 단계={phase}, 요청={operation}, HTTP={status}, 분류={category}. 버킷·구성원 권한·로그인 상태를 확인하세요. 자동 재전송하지 않습니다.')
+
+
+def storage_category(response):
+    fallback={401:'authentication',403:'access_denied',413:'size_limit',415:'mime_type',429:'rate_limit'}.get(response.status_code,'server_error' if response.status_code>=500 else 'unknown')
+    try:
+        data=response.json()
+        code=data.get('code') or data.get('error') if isinstance(data,dict) else None
+        category=_STORAGE_CODES.get(code,'unknown') if isinstance(code,str) else 'unknown'
+        if category=='object_missing' and response.status_code not in (400,404):return 'unknown'
+        return category if category!='unknown' else fallback
+    except (ValueError,AttributeError,TypeError):return fallback
+
+
 class Files:
     """불변 해시 경로. 자동 삭제·덮어쓰기 없음. Storage는 사용자 JWT만 사용."""
     bucket='reviewlab-originals'
     def __init__(self,library):
         self.library=library
+        self.phase='file'
         self.root=Path(library.root if getattr(library,'is_cloud',False) else library.path.parent)/'documents'
     def key(self,sha):
         if not re.fullmatch('[a-f0-9]{64}',sha):raise ValueError('파일 해시 형식 오류입니다.')
@@ -77,7 +99,8 @@ class Files:
         try:
             response=client.http.request(method,client.url+'/storage/v1/object/'+('authenticated/' if method=='GET' else '')+self.bucket+'/'+self.key(sha),headers={'apikey':client.key,'Authorization':'Bearer '+client.access_token,'Content-Type':'application/octet-stream','x-upsert':'false'},data=blob,timeout=(5,30),allow_redirects=False,stream=method=='GET')
             if response.status_code>=300:
-                response.close();raise ValueError('Private Storage 요청 실패. 버킷·권한·연결을 확인하세요. 자동 재전송하지 않습니다.')
+                category=storage_category(response);status=response.status_code
+                response.close();raise storage_failure('upload' if method=='POST' else 'download',status,category,self.phase)
             if method!='GET':response.close();return b''
             result=bytearray()
             try:
@@ -86,20 +109,22 @@ class Files:
                     if len(result)>MAX_FILE:raise ValueError('파일 다운로드 한도 초과')
             finally:response.close()
             return bytes(result)
-        except requests.RequestException:raise ValueError('파일 저장 결과 또는 다운로드를 확인하지 못했습니다. 자동 재전송하지 않습니다.') from None
-    def put(self,blob):
+        except requests.RequestException:raise storage_failure('upload' if method=='POST' else 'download','unconfirmed','network',self.phase) from None
+    def put(self,blob,phase='file'):
+        self.phase=phase if phase in ('original','extracted_json') else 'file'
         if len(blob)>MAX_FILE:raise ValueError('파일 한도 초과')
         sha=digest(blob);key=self.key(sha)
         if getattr(self.library,'is_cloud',False):
-            # 동일 객체는 내려받아 검증한 경우에만 재사용. 404만 신규 업로드 허용.
+            # HEAD는 호환 응답에서 오류 본문을 잃는다. 인증된 정보 조회로만 판별한다.
             client=self.library.client;client.refresh()
             import requests
             try:
-                r=client.http.request('HEAD',client.url+'/storage/v1/object/authenticated/'+self.bucket+'/'+key,headers={'apikey':client.key,'Authorization':'Bearer '+client.access_token},timeout=(5,30),allow_redirects=False)
-                code=r.status_code;r.close()
-            except requests.RequestException:raise ValueError('파일 존재 여부를 확인하지 못했습니다.') from None
+                r=client.http.request('GET',client.url+'/storage/v1/object/info/authenticated/'+self.bucket+'/'+key,headers={'apikey':client.key,'Authorization':'Bearer '+client.access_token},timeout=(5,30),allow_redirects=False)
+                code=r.status_code;category=storage_category(r) if code!=200 else 'exists';r.close()
+            except requests.RequestException:raise storage_failure('info','unconfirmed','network',self.phase) from None
             if code==200:self.get(sha);return sha
-            if code!=404:raise ValueError('Storage 접근을 확인하세요. 저장하지 않았습니다.')
+            if not (code in (400,404) and category=='object_missing'):
+                raise storage_failure('info',code,category,self.phase)
             self.remote('POST',sha,blob)
             self.get(sha)  # 저장 성공/해시 확인 후에만 metadata 연결
         else:
@@ -138,7 +163,7 @@ class Documents:
         extension=Path(name).suffix.lower().lstrip('.')
         if any(r['sha256']==digest(blob) and r['source_id']==source_id and r['kind']==kind for r in self.rows()):raise ValueError('이미 연결한 동일 파일입니다.')
         status,units=extract(blob,extension)
-        sha=self.files.put(blob);text_sha=self.files.put(packed(dict(extractor='reviewlab-v1',units=units)))
+        sha=self.files.put(blob,phase='original');text_sha=self.files.put(packed(dict(extractor='reviewlab-v1',units=units)),phase='extracted_json')
         row=dict(id=str(uuid4()),source_id=source_id,title=Path(name).name,reference_json=json.dumps(reference,ensure_ascii=False),kind=kind,format=extension,sha256=sha,text_sha256=text_sha,status=status,created_at=now())
         with self.library.connect() as db:self.insert(db,'document_files',row)
         return row

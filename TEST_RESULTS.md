@@ -1,3 +1,11 @@
+# 2026-10-28(KST): Storage 신규 원문 저장 오류 수정
+
+- Linux/Python 3.12.14/임시 PostgreSQL 16 전체 **277 통과·0 실패·0 미실행** (24.16초). 기존 266개와 신규 11개 검사. `scripts/test_cloud_postgres.py -ra --junitxml=test-results/storage-fix.xml --cloud-report=test-results/storage-fix.json` 실행.
+- 파일 존재 HEAD 검사의 HTTP 400 미존재 응답 차단을 재현해 인증된 GET 정보 조회와 오류 코드 판별로 수정. 405바이트 TXT·예시 모드·원본/JSON 순서·안전한 진단·오류 시 데이터 보존 검증.
+- 실제 Supabase·Windows는 미검증. 운영 오류의 실제 HTTP 상태는 기존 로그 누락으로 미확인. 운영 DB/Storage/RLS/자료/백업 변경 및 추가 SQL 없음. [원인·수정·진단·Windows 안내](STORAGE_FIX_REPORT.md).
+
+---
+
 # 2026-10-28(KST): 4단계 원문·근거 분석·초고 검토
 
 - 최종 전체 실행: **266 통과 / 0 실패 / 0 미실행**, Linux, Python 3.12.14, pytest 8.4.2, 임시 PostgreSQL 16. 기존 242개 검사 + 원문 관련 24개 검사. 실제 연구자료는 사용하지 않았다.

@@ -19,6 +19,7 @@ class HTTP:
             if status==200:self.files[key]=data
         class Response:
             status_code=status
+            def json(self):return {'code':'NoSuchKey'} if status==404 else {}
             def close(self):pass
             def iter_content(self,size):yield self.content
         r=Response();r.content=self.files.get(key,b'');return r
@@ -109,3 +110,84 @@ def test_document_cas_conflict_preserves_first_writer(tmp_path,source):
         b.reload()
         assert sb.rows('document_notes')==[first]
     finally:a.close();b.close()
+
+
+@pytest.mark.parametrize('status,body,allowed',[
+    (400,{'code':'NoSuchKey'},True),
+    (400,{'statusCode':'404','error':'not_found'},True),
+    (404,{'code':'NoSuchKey'},True),
+    (400,{'code':'NoSuchBucket'},False),
+    (400,{'code':'InvalidJWT'},False),
+    (400,{'error':'unknown'},False),
+    (401,{},False),(403,{'code':'AccessDenied'},False),
+    (404,{},False),(500,{},False),
+])
+def test_storage_missing_compatibility_and_safe_diagnostics(tmp_path,source,caplog,status,body,allowed):
+    from reviewlab.services.research import Research
+    from reviewlab.services.documents import extract,packed,digest
+    server=MemoryServer()
+    class Compatible(HTTP):
+        def __init__(self):super().__init__();self.writes=[];self.calls=[]
+        def request(self,method,url,headers=None,data=None,**kw):
+            self.calls.append((method,url))
+            assert headers['Authorization']=='Bearer FAKE_PRIVATE_TOKEN'
+            assert headers['apikey']=='FAKE_PRIVATE_KEY'
+            assert '/'+server.workspace+'/example/' in url
+            if '/info/authenticated/' in url and url.split('reviewlab-originals/')[1] not in self.files:
+                class Response:
+                    status_code=status
+                    def json(self):return dict(body,message='PRIVATE_CONTENT FAKE_PRIVATE_TOKEN FAKE_PRIVATE_KEY')
+                    def close(self):pass
+                return Response()
+            if method=='POST':
+                assert headers['Content-Type']=='application/octet-stream' and headers['x-upsert']=='false'
+                self.writes.append(data)
+            return super().request(method,url,headers,data,**kw)
+    http=Compatible();client=server.client();client.http=http;client.refresh=lambda:None
+    client.access_token='FAKE_PRIVATE_TOKEN';client.key='FAKE_PRIVATE_KEY'
+    cloud=CloudLibrary(client,server.workspace,'example',tmp_path)
+    try:
+        sid=Research(cloud).save(source);service=Documents(cloud)
+        blob=('가상 원문'.encode()+b' ' * 405)[:405]
+        before=cloud.dataset()
+        if allowed:
+            row=service.upload(blob,'reviewlab_test.txt',sid)
+            assert row['status']=='ready' and len(blob)==405
+            assert http.writes==[blob,packed(dict(extractor='reviewlab-v1',units=extract(blob,'txt')[1]))]
+            service.files.put(blob)
+            assert len(http.writes)==2  # 기존 객체는 해시 검증 후 재사용
+        else:
+            with pytest.raises(ValueError,match='HTTP='+str(status)) as error:service.upload(blob,'reviewlab_test.txt',sid)
+            assert '단계=original' in str(error.value)
+            assert not http.writes and cloud.dataset()==before
+        assert not any(method=='HEAD' for method,url in http.calls)
+        for secret in ('PRIVATE_CONTENT','FAKE_PRIVATE_TOKEN','FAKE_PRIVATE_KEY',server.workspace):assert secret not in caplog.text
+    finally:cloud.close()
+
+
+def test_extraction_precedes_network_and_json_failure_preserves_metadata(tmp_path,source,caplog):
+    from reviewlab.services.research import Research
+    server=MemoryServer()
+    class FailJSON(HTTP):
+        writes=0
+        def request(self,method,*a,**kw):
+            if method=='POST':
+                self.writes+=1
+                if self.writes==2:
+                    class Response:
+                        status_code=403
+                        def json(self):raise ValueError('PRIVATE_BODY')
+                        def close(self):pass
+                    return Response()
+            return super().request(method,*a,**kw)
+    http=FailJSON();client=server.client();client.http=http;client.refresh=lambda:None
+    cloud=CloudLibrary(client,server.workspace,'example',tmp_path)
+    try:
+        sid=Research(cloud).save(source);service=Documents(cloud);before=cloud.dataset()
+        with pytest.raises(ValueError):service.upload(b'\xff','bad.txt',sid)
+        assert not http.files and http.writes==0 and cloud.dataset()==before
+        with pytest.raises(ValueError,match='단계=extracted_json.*HTTP=403.*access_denied'):
+            service.upload('가상 원문'.encode(),'test.txt',sid)
+        assert len(http.files)==1 and http.writes==2 and cloud.dataset()==before
+        assert 'PRIVATE_BODY' not in caplog.text
+    finally:cloud.close()

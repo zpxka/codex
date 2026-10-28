@@ -282,3 +282,5 @@ PNG는 Plotly와 같은 집계표로 Matplotlib에서 렌더링합니다. 따라
 **원문·논문 검토**에 PDF/DOCX/UTF-8 TXT 연결·추출·검색, 근거 위치/문헌 비교 기록, 초고 문장 비교/검토 제안, 선택적 AI 인용 탐색, 파일 포함 ZIP 백업을 추가했습니다. 외부 AI는 기본 꺼짐입니다. **공용 사용 전 SQL v3와 private Storage 정책의 관리자 검토·승인이 필요하며 운영에는 적용하지 않았습니다.** [사용법·설정·비용·파일 백업·Windows 업데이트·복구](DOCUMENTS_GUIDE.md)를 먼저 읽으세요. 기존 SQL을 다시 실행하거나 원본/백업을 삭제하지 마세요.
 
 4단계의 변경 파일·마이그레이션·테스트·미검증 항목은 [STAGE4_REPORT.md](STAGE4_REPORT.md)에 정리했습니다.
+
+원문 업로드에서 Storage 오류가 나면 [Storage 오류 수정·진단·Windows 업데이트 안내](STORAGE_FIX_REPORT.md)를 확인하세요. 이번 수정에는 SQL 재적용이 필요하지 않습니다.
